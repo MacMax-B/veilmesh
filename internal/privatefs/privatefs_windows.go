@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -153,7 +154,7 @@ func Validate(path string, info os.FileInfo, kind Kind) error {
 		return errors.New("private Windows object has an unexpected DACL")
 	}
 	if int(dacl.AceCount) != len(unique) {
-		return fmt.Errorf("private Windows object has %d DACL entries, want %d", dacl.AceCount, len(unique))
+		return fmt.Errorf("private Windows object has %d DACL entries, want %d: %s", dacl.AceCount, len(unique), describeWindowsACL(dacl))
 	}
 	seen := make([]bool, len(unique))
 	expectedFlags := uint8(windows.NO_INHERITANCE)
@@ -189,6 +190,22 @@ func Validate(path string, info os.FileInfo, kind Kind) error {
 		}
 	}
 	return nil
+}
+
+func describeWindowsACL(dacl *windows.ACL) string {
+	if dacl == nil {
+		return "unavailable"
+	}
+	entries := make([]string, 0, dacl.AceCount)
+	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, index, &ace); err != nil || ace == nil {
+			entries = append(entries, fmt.Sprintf("%d:unreadable", index))
+			continue
+		}
+		entries = append(entries, fmt.Sprintf("%d:type=%#x flags=%#x mask=%#x", index, ace.Header.AceType, ace.Header.AceFlags, ace.Mask))
+	}
+	return strings.Join(entries, ", ")
 }
 
 // ValidateKeyParent currently requires the same protected Windows DACL as a
