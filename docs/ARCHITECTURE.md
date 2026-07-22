@@ -2,7 +2,7 @@
 
 ## Zielbild
 
-VeilMesh soll ein UI-unabhängiger Messenger-Core sein. Frontends besitzen keine
+Propagare soll ein UI-unabhängiger Messenger-Core sein. Frontends besitzen keine
 Netzwerk- oder Kryptografielogik. Der Core verwaltet Konten, Geräte,
 Sitzungsschlüssel, Gruppen, Outbox, Replikation, Empfang, Dateien und Node-
 Reputation.
@@ -142,13 +142,13 @@ das nicht. Der produktive Transport benötigt mindestens:
 Ohne Cover Traffic kann ein globaler Beobachter trotz Verschlüsselung Zeitpunkte
 und Datenmengen korrelieren.
 
-`mixtransport.Scheduler` implementiert dafür VeilMix v2: Commands werden vorab
+`mixtransport.Scheduler` implementiert dafür ENIG-Mix v2: Commands werden vorab
 in feste Pakete gekapselt; pro Slot wird unabhängig von Aktivität ein frisches
 Cover-Paket erzeugt und genau ein Real-, positionsgebundenes Poll- oder
 Cover-Paket gesendet. Verpasste Slots führen zum Abbruch statt zu einem
 unsicheren Fallback. Das Onion-Format selbst bleibt bei einem auditierten,
 PQ-hybriden Provider. Die normative Spezifikation steht in
-[`VEILMIX-V2.md`](VEILMIX-V2.md).
+[`ENIG-MIX-V2.md`](ENIG-MIX-V2.md).
 
 ## Dateien und Bilder
 

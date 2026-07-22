@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 type Registry struct {

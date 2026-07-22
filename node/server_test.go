@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/client"
-	"veilmesh/nodedir"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/client"
+	"propagare/nodedir"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 func testServer(t *testing.T, mutate func(*Config)) (*Server, *DiskStore) {

@@ -7,7 +7,7 @@ import (
 
 const (
 	HybridHPKESuite = "HPKE-MLKEM768-X25519-HKDFSHA256-CHACHA20POLY1305"
-	hpkeInfo        = "veilmesh/direct-envelope/v1"
+	hpkeInfo        = "enig/direct-envelope/v1"
 )
 
 type HybridKEMKeyPair struct {

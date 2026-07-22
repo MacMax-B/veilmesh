@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const transportCertificateRenewBefore = 30 * 24 * time.Hour

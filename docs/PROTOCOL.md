@@ -1,4 +1,4 @@
-# Referenzprotokoll v1
+# ENIG-Referenzprotokoll v1
 
 ## Node-Endpunkte
 
@@ -61,9 +61,9 @@ Nachrichtenobjekts, beide Konten, Empfängergerät und Empfangszeit. Er wird vom
 Empfängergerät hybrid signiert und ebenfalls nur im Ratchet transportiert. Er
 ist nicht mit einem Node-Speicherbeleg gleichzusetzen und behauptet kein Lesen.
 
-## VeilMix v2
+## ENIG-Mix v2
 
-VeilMix-Commands verwenden eine unabhängige Version `2`, eine zufällige
+ENIG-Mix-Commands verwenden eine unabhängige Version `2`, eine zufällige
 32-Byte-Request-ID, einen bekannten Operationstyp, Erstellungs-/Ablaufzeit und
 maximal 2 KiB opaque Payload. Encodings sind auf 4 KiB begrenzt. v2 legt exakt
 8 KiB, fünf Sekunden Slotintervall und einen Poll in jedem sechsten Slot fest.
@@ -74,7 +74,7 @@ In jedem aktiven Slot wird exakt ein festes Paket versendet. Poll-Slots hängen
 nur von der öffentlichen Slotnummer ab. In allen anderen Slots ersetzt Cover
 eine leere Queue, einen abgelaufenen Command oder fehlende Anwendungsaktivität.
 Das normative Ablauf- und Angreifermodell steht in
-[`VEILMIX-V2.md`](VEILMIX-V2.md).
+[`ENIG-MIX-V2.md`](ENIG-MIX-V2.md).
 
 ## Node-Verzeichnis v1
 
@@ -127,7 +127,7 @@ deshalb bewusst kein Feld in `/v1/parameters`.
 
 ```text
 SHA-256(
-  "veilmesh/postage/v1"
+  "enig/postage/v1"
   || epoch
   || item_id
   || nonce

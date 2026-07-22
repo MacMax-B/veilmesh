@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/nodedir"
-	"veilmesh/pqcrypto"
+	"propagare/nodedir"
+	"propagare/pqcrypto"
 )
 
 type directoryRoundTrip func(*http.Request) (*http.Response, error)

@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"veilmesh/client"
-	"veilmesh/protocol"
+	"propagare/client"
+	"propagare/protocol"
 )
 
 type FileSecret struct {
@@ -109,7 +109,7 @@ func EncryptFile(name, mediaType string, plaintext []byte, maxBytes, chunkSize i
 		if _, err := rand.Read(nonce); err != nil {
 			return EncryptedFile{}, err
 		}
-		aad := []byte(fmt.Sprintf("veilmesh/file/v1\x00%s\x00%d", fileID, index))
+		aad := []byte(fmt.Sprintf("enig/file/v1\x00%s\x00%d", fileID, index))
 		ciphertext := append(nonce, aead.Seal(nil, nonce, padded, aad)...)
 		wipe(padded)
 		routeTag, err := client.RandomCapability()
@@ -158,7 +158,7 @@ func DecryptFile(secret FileSecret, manifest protocol.FileManifest, chunks map[i
 			return nil, fmt.Errorf("invalid encrypted chunk %d", metadata.Index)
 		}
 		nonce, body := ciphertext[:aead.NonceSize()], ciphertext[aead.NonceSize():]
-		aad := []byte(fmt.Sprintf("veilmesh/file/v1\x00%s\x00%d", manifest.FileID, metadata.Index))
+		aad := []byte(fmt.Sprintf("enig/file/v1\x00%s\x00%d", manifest.FileID, metadata.Index))
 		padded, err := aead.Open(nil, nonce, body, aad)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt chunk %d: %w", metadata.Index, err)

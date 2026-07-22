@@ -1,13 +1,13 @@
-# VeilMix v1
+# ENIG-Mix v1
 
-> **Außer Betrieb:** Dieses Hochlastprofil ist durch VeilMix v2 ersetzt. Der
+> **Außer Betrieb:** Dieses Hochlastprofil ist durch ENIG-Mix v2 ersetzt. Der
 > aktuelle Parser akzeptiert keine v1-Commands. Diese Datei bleibt ausschließlich
 > als historische Versionsdokumentation erhalten; neue Integrationen müssen
-> [`VEILMIX-V2.md`](VEILMIX-V2.md) verwenden.
+> [`ENIG-MIX-V2.md`](ENIG-MIX-V2.md) verwenden.
 
 ## Status
 
-VeilMix v1 ist das VeilMesh-eigene Orchestrierungsprotokoll für
+ENIG-Mix v1 ist das Propagare-eigene Orchestrierungsprotokoll für
 metadatenresistentes, asynchrones Messaging. Es definiert Verkehrsform,
 Anwendungsbefehle, Provider-Anforderungen und Fehlerverhalten. Es definiert
 absichtlich weder eine neue kryptografische Primitive noch ein neues Onion-
@@ -21,7 +21,7 @@ werden.
 
 ## Sicherheitsziel und Angreifermodell
 
-VeilMix soll gegenüber einem globalen passiven Netzbeobachter und teilweise
+ENIG-Mix soll gegenüber einem globalen passiven Netzbeobachter und teilweise
 kompromittierten Relays verbergen:
 
 - welcher Account eine gespeicherte Nachricht erzeugt oder abruft,
@@ -57,7 +57,7 @@ signierte ENIG-Anwendungsnachricht
 auditierter PQXDH-/Double-or-Triple-Ratchet
         │  pro Empfängergerät separater Ciphertext
         ▼
-VeilMix Command v1 (maximal 20 KiB Payload)
+ENIG-Mix Command v1 (maximal 20 KiB Payload)
         │
         ▼
 auditierter PQ-hybrider Sphinx-/Onion-Provider
@@ -104,7 +104,7 @@ implementiert; ein Provider darf die Größenprüfung nicht umgehen.
 
 ## Konstantes Slotprotokoll
 
-VeilMix v1 besitzt genau ein zulässiges öffentliches Verkehrsprofil:
+ENIG-Mix v1 besitzt genau ein zulässiges öffentliches Verkehrsprofil:
 
 - exakt ein 32-KiB-Upstream-Paket pro Sekunde,
 - exakt einen anonymen Poll in jedem fünften Slot,
@@ -150,7 +150,7 @@ bleiben Teil der Trusted Computing Base.
 
 Als Referenz für die Mix-Schicht dienen die öffentlich spezifizierten festen
 Sphinx-Pakete, Replay-Caches, Schlüsselrotation und Layer-Topologie von
-[Katzenpost](https://katzenpost.network/docs/specs/mixnet/). VeilMesh übernimmt
+[Katzenpost](https://katzenpost.network/docs/specs/mixnet/). Propagare übernimmt
 kein Paketformat ungeprüft. Ein Provider muss zusätzlich den PQ-hybriden
 Onion-Schutz nachweisen. ML-KEM selbst ist in
 [FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) standardisiert; hybride

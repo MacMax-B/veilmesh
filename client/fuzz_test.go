@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"veilmesh/protocol"
+	"propagare/protocol"
 )
 
 func FuzzStrictDirectCiphertextJSON(f *testing.F) {

@@ -13,10 +13,10 @@ import (
 	"io"
 	"time"
 
-	"veilmesh/account"
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/account"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (

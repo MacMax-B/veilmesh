@@ -10,10 +10,10 @@ import (
 
 	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 
-	"veilmesh/protocol"
+	"propagare/protocol"
 )
 
-const signatureContext = "veilmesh-v1"
+const signatureContext = "enig-v1"
 
 type HybridSigner struct {
 	edPrivate ed25519.PrivateKey
@@ -72,7 +72,7 @@ func (s *HybridSigner) PublicIdentity() protocol.NodePublicIdentity {
 
 func NodeID(identity protocol.NodePublicIdentity) string {
 	h := sha256.New()
-	_, _ = h.Write([]byte("veilmesh/node-id/v1"))
+	_, _ = h.Write([]byte("enig/node-id/v1"))
 	_, _ = h.Write(identity.Ed25519Public)
 	_, _ = h.Write(identity.MLDSA65Public)
 	return hex.EncodeToString(h.Sum(nil))
@@ -93,7 +93,7 @@ func ValidPublicIdentity(identity protocol.NodePublicIdentity) bool {
 
 func domainMessage(domain string, message []byte) []byte {
 	h := sha256.New()
-	_, _ = h.Write([]byte("veilmesh/signature/v1"))
+	_, _ = h.Write([]byte("enig/signature/v1"))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(domain))
 	_, _ = h.Write([]byte{0})

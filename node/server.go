@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/nodedir"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/nodedir"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 func TestDeviceCertificateAndEncryptedSync(t *testing.T) {

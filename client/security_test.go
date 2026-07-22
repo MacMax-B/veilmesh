@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

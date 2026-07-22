@@ -30,8 +30,8 @@ import (
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (

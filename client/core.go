@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 type Config struct {
@@ -94,7 +94,7 @@ func RandomDeleteToken() ([]byte, error) {
 }
 
 func directAAD(routeTag string, createdAt, expiresAt time.Time) []byte {
-	return []byte(fmt.Sprintf("veilmesh/direct/v1\x00%s\x00%d\x00%d", routeTag, createdAt.UTC().UnixMilli(), expiresAt.UTC().UnixMilli()))
+	return []byte(fmt.Sprintf("enig/direct/v1\x00%s\x00%d\x00%d", routeTag, createdAt.UTC().UnixMilli(), expiresAt.UTC().UnixMilli()))
 }
 
 // SendDirect is a development/bootstrap envelope. It does not provide a

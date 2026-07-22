@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 type memoryVault struct {

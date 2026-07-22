@@ -2,7 +2,7 @@
 
 ## Geltungsbereich
 
-Dieses Modell beschreibt den aktuellen VeilMesh-Prototyp. Es ist keine Aussage,
+Dieses Modell beschreibt den aktuellen Propagare-Prototyp. Es ist keine Aussage,
 dass das System gegen „alle Angriffe immun“ sei. Sicherheitsbehauptungen gelten
 nur für den eingecheckten, getesteten Code, die festgelegten Abhängigkeiten und
 die unten genannten Annahmen.
@@ -70,9 +70,9 @@ Der strikte Pfad gibt Klartext erst nach Ratchet-Entschlüsselung, Größenprüf
 Profil-/Gerätesignaturprüfung und atomarer Replay-Ablehnung frei. Signierte
 Client-Belege sind übertragbare Authentizitätsnachweise und reduzieren Deniability.
 
-## VeilMix
+## ENIG-Mix
 
-Der VeilMix-v2-Scheduler schützt die Verkehrsform nur während eines
+Der ENIG-Mix-v2-Scheduler schützt die Verkehrsform nur während eines
 ununterbrochenen Laufs: ein festes Paket je Slot, feste Pollpositionen und Cover
 ohne Aktivitätsabhängigkeit. Ein Slotfehler beendet den Lauf und damit die
 Behauptung für den betroffenen Zeitraum. Suspend, Offline-Zeit und unterschiedliche
@@ -146,7 +146,7 @@ MLS aus auditierten Providern atomar integriert sind.
 - kein konkreter produktiver Double-/Triple-Ratchet-Adapter für Textnachrichten
 - kein MLS-Provider für Gruppeninhalte
 - kein konkreter anonymer Transport-/Cover-Traffic-Adapter
-- keine reale VeilMix-Relay-/Courier-/PKI-Infrastruktur und kein auditierter
+- keine reale ENIG-Mix-Relay-/Courier-/PKI-Infrastruktur und kein auditierter
   PQ-hybrider Onion-Paketprovider; nur Command-Layer und Scheduler sind vorhanden
 - keine Key-Transparency-Struktur und keine plattformspezifischen Secret-Vault-Adapter
 - keine permissionless Sybil-Abwehr, transparente Checkpoint-Logstruktur oder

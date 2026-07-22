@@ -1,8 +1,8 @@
-# VeilMix v2
+# ENIG-Mix v2
 
 ## Status
 
-VeilMix v2 ist das moderate VeilMesh-Orchestrierungsprotokoll für
+ENIG-Mix v2 ist das moderate Propagare-Orchestrierungsprotokoll für
 metadatenresistentes asynchrones Messaging. Es definiert Command-Grenzen,
 Verkehrsform, Provider-Anforderungen und Fehlerverhalten, aber absichtlich keine
 neue kryptografische Primitive und kein eigenes Onion-Paketformat.
@@ -43,7 +43,7 @@ signierte ENIG-Anwendungsnachricht
 auditierter PQXDH-/Double-or-Triple-Ratchet
         │  pro Empfängergerät separater Ciphertext
         ▼
-VeilMix Command v2 (maximal 2 KiB Payload)
+ENIG-Mix Command v2 (maximal 2 KiB Payload)
         │
         ▼
 auditierter PQ-hybrider Sphinx-/Onion-Provider

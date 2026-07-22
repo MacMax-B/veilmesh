@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/transportauth"
+	"propagare/transportauth"
 )
 
 func TestDirectoryHTTPSPinsPublisherAndChallengeIdentity(t *testing.T) {

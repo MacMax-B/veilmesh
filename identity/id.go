@@ -1,4 +1,4 @@
-// Package identity defines self-certifying, shareable VeilMesh identifiers.
+// Package identity defines the self-certifying, shareable ENIG identifiers.
 package identity
 
 import (
@@ -6,8 +6,8 @@ import (
 	"encoding/base32"
 	"strings"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (
@@ -23,7 +23,7 @@ var encoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 
 func keyDigest(domain string, public protocol.NodePublicIdentity, extra []byte) string {
 	hash := sha256.New()
-	_, _ = hash.Write([]byte("veilmesh/enig-id/v1\x00"))
+	_, _ = hash.Write([]byte("enig/id/v1\x00"))
 	_, _ = hash.Write([]byte(domain))
 	_, _ = hash.Write([]byte{0, public.ProtocolVersion})
 	_, _ = hash.Write(public.Ed25519Public)

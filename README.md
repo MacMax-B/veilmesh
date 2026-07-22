@@ -1,7 +1,10 @@
-# VeilMesh
+# Propagare
 
-VeilMesh ist ein ausführbares Grundprojekt für einen anonymitätsorientierten,
-dezentralen Messenger. Es trennt den plattformneutralen Client-Core strikt von
+Propagare ist ein ausführbares Grundprojekt für einen anonymitätsorientierten,
+dezentralen Messenger. Das zugrunde liegende Wire-Protokoll heißt **ENIG**
+(spezifiziert in [`docs/PROTOCOL.md`](docs/PROTOCOL.md)); alle Adressen sind
+selbstzertifizierende `ENIG…`-IDs, und die Metadaten-/Cover-Schicht ist
+ENIG-Mix v2. Das Projekt trennt den plattformneutralen Client-Core strikt von
 Frontends und Node-Servern. Android-, iOS-, Desktop-, CLI- und Web-Oberflächen
 können später dieselbe Core-API verwenden.
 
@@ -37,7 +40,7 @@ explizit aufgeführt.
 - hybrid gerätesignierte Nachrichten und gerätesignierte Client-Zustellbelege
 - strikt geschlossener Nachrichtenpfad, der ohne auditierten PQ-Ratchet,
   persistenten Replay-Speicher und Mix-/Cover-Transport nicht startet
-- `VeilMix v2`: moderater, größenbegrenzter Command-Layer und konstant
+- `ENIG-Mix v2`: moderater, größenbegrenzter Command-Layer und konstant
   getakteter Real-/Poll-/Cover-Scheduler mit festen Paketen und hartem
   Fail-Closed-Verhalten
 - IP-basiertes Node-Verzeichnis mit ausgelieferter Seed-Pin-Liste, hybrid
@@ -58,7 +61,7 @@ explizit aufgeführt.
   PKI (Plain HTTP nur explizit für lokale Entwicklung). Er verbirgt IP-Adressen und
   Zeitkorrelationen nicht. Produktiv braucht er ein geprüftes Onion-/Mixnet-
   Transportmodul, Cover Traffic, Batching und TLS/QUIC innerhalb der Hops.
-- Der VeilMix-Scheduler und seine PQ-/Audit-Provider-Grenzen sind implementiert;
+- Der ENIG-Mix-Scheduler und seine PQ-/Audit-Provider-Grenzen sind implementiert;
   ein konkreter auditierter PQ-hybrider Sphinx-/Mixnet-Provider, Courier und
   reale Relay-Infrastruktur sind noch nicht enthalten.
 - Die versiegelte HPKE-Nachricht ist ein sicherer PQ-hybrider Baustein, aber noch
@@ -90,10 +93,10 @@ explizit aufgeführt.
 account/       Konten, Geräte-Zertifikate und verschlüsselter Geräte-Sync
 identity/      selbstzertifizierende ENIG-Konto-, Geräte- und Gruppen-IDs
 message/       signierte Nachrichten/Client-Belege und strikte Provider-Grenzen
-mixtransport/  VeilMix-v2-Commands und moderater Real/Poll/Cover-Scheduler
+mixtransport/  ENIG-Mix-v2-Commands und moderater Real/Poll/Cover-Scheduler
 nodedir/       signierte IP-Leases, Seed-Quorum und Snapshot-Reconciliation
 client/        UI-unabhängiger Client-Core, Replikation, Audit und Failover
-cmd/veilnode/  ausführbarer Referenz-Node
+cmd/propagare-node/  ausführbarer Referenz-Node
 group/         Admin-/Ban-Zustandsmaschine und MLS-Provider-Grenze
 call/          direkte, hybrid authentisierte WebRTC-DTLS-SRTP-Calls
 media/         gepolsterte, verschlüsselte Datei- und Bildblöcke
@@ -127,7 +130,7 @@ Replikation, Ausfallersatz, Speicher-Audit und Löschen.
 ## Entwicklungs-Node starten
 
 ```bash
-go run ./cmd/veilnode \
+go run ./cmd/propagare-node \
   -listen 127.0.0.1:8787 \
   -data ./local/node-1-data \
   -key ./local/node-1-key.json \
@@ -138,7 +141,7 @@ Für ein Quorum sollten mindestens fünf unabhängige Nodes laufen. Der
 Referenzserver sollte nicht direkt ins öffentliche Internet gestellt werden.
 
 Der optionale Verzeichnisbetrieb verlangt eine mit Client-Releases gemeinsam
-ausgelieferte `veilmesh-seeds.json`. Sie pinnt vollständige hybride
+ausgelieferte `propagare-seeds.json`. Sie pinnt vollständige hybride
 Seed-Identitäten und literale IP-Endpunkte. Eine öffentliche Node wird zum
 Beispiel mit `-advertise-ip`, `-advertise-port`, `-node-seeds` und
 `-node-quorum` gestartet. Der Server erzeugt seinen Zertifikatscontainer
@@ -201,7 +204,7 @@ Ereignisse, Nachrichtenmodelle und Zustandsänderungen.
 Die geplante stabile Oberfläche für Apps und alternative Frontends steht in
 [`docs/FRONTEND-API.md`](docs/FRONTEND-API.md).
 Das eigene Metadatenprotokoll ist in
-[`docs/VEILMIX-V2.md`](docs/VEILMIX-V2.md) spezifiziert. Das Node-Verzeichnis ist
+[`docs/ENIG-MIX-V2.md`](docs/ENIG-MIX-V2.md) spezifiziert. Das Node-Verzeichnis ist
 in [`docs/NODE-DIRECTORY-V1.md`](docs/NODE-DIRECTORY-V1.md) beschrieben.
 
 ## Direkten 1:1-Call aushandeln
@@ -242,5 +245,5 @@ Metadaten- und Implementierungs-Audits zwingend.
 ## Lizenz
 
 Dieses Projekt steht unter der [GNU Affero General Public License v3.0](LICENSE)
-(AGPL-3.0). Wer VeilMesh verändert und als Netzwerkdienst betreibt, muss den
+(AGPL-3.0). Wer Propagare verändert und als Netzwerkdienst betreibt, muss den
 Quelltext der veränderten Version den Nutzern dieses Dienstes zugänglich machen.

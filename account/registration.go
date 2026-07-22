@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (
@@ -44,7 +44,7 @@ type LocalAccount struct {
 	deviceCert    DeviceCertificate
 }
 
-func vaultKey(accountID string) string { return "veilmesh/account/v1/" + accountID }
+func vaultKey(accountID string) string { return "enig/account/v1/" + accountID }
 
 func Register(ctx context.Context, vault SecretVault) (*LocalAccount, error) {
 	if vault == nil {

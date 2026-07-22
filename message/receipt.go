@@ -7,10 +7,10 @@ import (
 	"errors"
 	"time"
 
-	"veilmesh/account"
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/account"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 // DeliveryReceipt proves that a certified recipient device accepted and

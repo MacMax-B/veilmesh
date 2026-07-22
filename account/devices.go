@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (
@@ -92,7 +92,7 @@ func SealSyncEvent(accountPublic protocol.NodePublicIdentity, devices []DeviceCe
 			return nil, errors.New("duplicate sync device")
 		}
 		seen[certificate.Device.DeviceID] = struct{}{}
-		aad := []byte("veilmesh/device-sync/v1\x00" + certificate.AccountID + "\x00" + certificate.Device.DeviceID)
+		aad := []byte("enig/device-sync/v1\x00" + certificate.AccountID + "\x00" + certificate.Device.DeviceID)
 		encapsulation, ciphertext, err := pqcrypto.Seal(certificate.Device.HPKEPublicKey, aad, event)
 		if err != nil {
 			return nil, err
@@ -111,6 +111,6 @@ func OpenSyncEvent(privateHPKEKey []byte, accountID, deviceID string, envelope p
 		len(envelope.Payload.Ciphertext) == 0 || len(envelope.Payload.Ciphertext) > MaxSyncEventBytes+1024 {
 		return nil, errors.New("device sync envelope mismatch")
 	}
-	aad := []byte("veilmesh/device-sync/v1\x00" + accountID + "\x00" + deviceID)
+	aad := []byte("enig/device-sync/v1\x00" + accountID + "\x00" + deviceID)
 	return pqcrypto.Open(privateHPKEKey, envelope.Payload.Encapsulation, aad, envelope.Payload.Ciphertext)
 }

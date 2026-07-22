@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const workDomain = "veilmesh/postage/v1"
+const workDomain = "enig/postage/v1"
 
 var ErrInvalidWork = errors.New("invalid proof of work")
 

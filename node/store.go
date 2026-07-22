@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/protocol"
+	"propagare/protocol"
 )
 
 var (

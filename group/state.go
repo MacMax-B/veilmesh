@@ -7,9 +7,9 @@ import (
 	"errors"
 	"time"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/identity"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 type Role string

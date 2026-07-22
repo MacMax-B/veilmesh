@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 func LoadOrCreateSigner(path string) (*pqcrypto.HybridSigner, error) {
-	if path == "" || strings.HasPrefix(filepath.Base(path), ".veilmesh-private-") {
+	if path == "" || strings.HasPrefix(filepath.Base(path), ".propagare-private-") {
 		return nil, errors.New("invalid node signing key path")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil && filepath.Dir(path) != "." {
@@ -67,7 +67,7 @@ func cleanupPrivateTemporaries(directory, targetBase string) error {
 		return err
 	}
 	removed := false
-	prefix := ".veilmesh-private-"
+	prefix := ".propagare-private-"
 	if targetBase != "" {
 		prefix += targetBase + "-"
 	}
@@ -92,7 +92,7 @@ func cleanupPrivateTemporaries(directory, targetBase string) error {
 
 func writePrivateAtomic(path string, data []byte) (returnErr error) {
 	directory := filepath.Dir(path)
-	temporary, err := os.CreateTemp(directory, ".veilmesh-private-"+filepath.Base(path)+"-*")
+	temporary, err := os.CreateTemp(directory, ".propagare-private-"+filepath.Base(path)+"-*")
 	if err != nil {
 		return err
 	}

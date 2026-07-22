@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"veilmesh/protocol"
+	"propagare/protocol"
 )
 
 func FuzzRequestJSONDecoder(f *testing.F) {

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/client"
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/client"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 type mediaRoundTripFunc func(*http.Request) (*http.Response, error)

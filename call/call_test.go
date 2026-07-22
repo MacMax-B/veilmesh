@@ -9,7 +9,7 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 const testAudioSDP = "v=0\r\n" +
@@ -61,7 +61,7 @@ func TestSignalAuthenticationExpiryAndBounds(t *testing.T) {
 	}
 
 	tampered := signal
-	tampered.SDP += "a=x-veilmesh-tampered:1\r\n"
+	tampered.SDP += "a=x-propagare-tampered:1\r\n"
 	if err := verifySignal(tampered, SignalOffer, caller.PublicIdentity(), callee.PublicIdentity().NodeID, now); !errors.Is(err, ErrInvalidSignal) {
 		t.Fatalf("tampered SDP was not rejected: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestDirectCallConnectsAndCarriesAuthenticatedMedia(t *testing.T) {
 	defer callerSession.Close()
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48_000, Channels: 2},
-		"audio", "veilmesh-direct-call",
+		"audio", "propagare-direct-call",
 	)
 	if err != nil {
 		t.Fatal(err)

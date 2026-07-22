@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/identity"
-	"veilmesh/pqcrypto"
+	"propagare/identity"
+	"propagare/pqcrypto"
 )
 
 func TestOwnerDelegatesAdminWithoutSharingPrivateKey(t *testing.T) {

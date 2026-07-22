@@ -1,6 +1,6 @@
 /local/
-/veilmesh-data/
-/veilmesh-node-key.json
+/propagare-data/
+/propagare-node-key.json
 *.tmp
 *.log
 .DS_Store

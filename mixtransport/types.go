@@ -1,4 +1,4 @@
-// Package mixtransport implements the VeilMix v2 moderate constant-rate transport
+// Package mixtransport implements the ENIG-Mix v2 moderate constant-rate transport
 // orchestration. Cryptographic onion packets are supplied by an independently
 // audited provider; this package intentionally does not invent an onion format.
 package mixtransport
@@ -65,7 +65,7 @@ func validRequestID(requestID string) bool {
 func NewCommand(kind CommandKind, payload []byte, now time.Time, lifetime time.Duration) (Command, error) {
 	if !validKind(kind) || len(payload) == 0 || len(payload) > MaxCommandPayloadBytes ||
 		now.IsZero() || lifetime <= 0 || lifetime > MaxCommandLifetime {
-		return Command{}, errors.New("invalid VeilMix command input")
+		return Command{}, errors.New("invalid ENIG-Mix command input")
 	}
 	requestID := make([]byte, RequestIDBytes)
 	if _, err := rand.Read(requestID); err != nil {
@@ -88,7 +88,7 @@ func ValidateCommand(command Command, now time.Time) error {
 		command.CreatedAt.IsZero() || command.ExpiresAt.IsZero() ||
 		command.CreatedAt.After(now.Add(5*time.Minute)) || !command.ExpiresAt.After(command.CreatedAt) ||
 		command.ExpiresAt.Sub(command.CreatedAt) > MaxCommandLifetime || now.After(command.ExpiresAt) {
-		return errors.New("invalid VeilMix command")
+		return errors.New("invalid ENIG-Mix command")
 	}
 	return nil
 }
@@ -102,14 +102,14 @@ func EncodeCommand(command Command, now time.Time) ([]byte, error) {
 		return nil, err
 	}
 	if len(encoded) == 0 || len(encoded) > MaxEncodedCommandBytes {
-		return nil, errors.New("encoded VeilMix command exceeds size limit")
+		return nil, errors.New("encoded ENIG-Mix command exceeds size limit")
 	}
 	return encoded, nil
 }
 
 func DecodeCommand(encoded []byte, now time.Time) (Command, error) {
 	if len(encoded) == 0 || len(encoded) > MaxEncodedCommandBytes {
-		return Command{}, errors.New("encoded VeilMix command size is out of range")
+		return Command{}, errors.New("encoded ENIG-Mix command size is out of range")
 	}
 	var command Command
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
@@ -120,7 +120,7 @@ func DecodeCommand(encoded []byte, now time.Time) (Command, error) {
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return Command{}, errors.New("multiple VeilMix JSON values")
+			return Command{}, errors.New("multiple ENIG-Mix JSON values")
 		}
 		return Command{}, err
 	}

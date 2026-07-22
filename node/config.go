@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"time"
 
-	"veilmesh/protocol"
+	"propagare/protocol"
 )
 
 type Config struct {
@@ -27,8 +27,8 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		ListenAddress:         "127.0.0.1:8787",
-		DataDir:               "./veilmesh-data",
-		KeyFile:               "./veilmesh-node-key.json",
+		DataDir:               "./propagare-data",
+		KeyFile:               "./propagare-node-key.json",
 		BaseDifficulty:        16,
 		EpochSeconds:          10 * 60,
 		MaxItemBytes:          protocol.DefaultMaxItemBytes,

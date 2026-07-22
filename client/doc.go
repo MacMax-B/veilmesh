@@ -1,4 +1,4 @@
-// Package client is the UI-independent VeilMesh client core.
+// Package client is the UI-independent Propagare client core.
 //
 // Frontends should depend on this package (or generated bindings around it),
 // never on node transports or cryptographic primitives directly. The Core

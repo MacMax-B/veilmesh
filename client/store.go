@@ -30,7 +30,7 @@ const (
 	localRecordAccountingOverhead = int64(4 * 1024)
 	localRecordSuffix             = ".vmc"
 	localStoreLockFilename        = ".client-store.lock"
-	localRecordDomain             = "veilmesh/client-store/v1\x00"
+	localRecordDomain             = "enig/client-store/v1\x00"
 )
 
 var (
@@ -679,7 +679,7 @@ func localRecordPrunable(meta localRecordMeta, now time.Time) bool {
 }
 
 func localRecordFilename(id string) string {
-	digest := sha256.Sum256([]byte("veilmesh/client-store-path/v1\x00" + id))
+	digest := sha256.Sum256([]byte("enig/client-store-path/v1\x00" + id))
 	return hex.EncodeToString(digest[:]) + localRecordSuffix
 }
 

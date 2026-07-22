@@ -1,4 +1,4 @@
-# Anleitung für Codex: VeilMesh sicher weiterbauen
+# Anleitung für Codex: Propagare sicher weiterbauen
 
 Diese Datei ist die Arbeitsreihenfolge für weitere Codex-Sitzungen. Vor jeder
 Änderung zuerst `AGENTS.md`, `SECURITY.md`, `docs/ARCHITECTURE.md` und diese Datei
@@ -6,7 +6,7 @@ vollständig lesen.
 
 ## Leitprinzip
 
-VeilMesh darf nie Sicherheit behaupten, die nur geplant ist. Implementierte,
+Propagare darf nie Sicherheit behaupten, die nur geplant ist. Implementierte,
 getestete Eigenschaften und offene Forschungs-/Auditpunkte bleiben in der
 Dokumentation getrennt.
 
@@ -100,7 +100,7 @@ Abnahmekriterien:
 
 ## Phase 4: Metadatenresistenter Transport
 
-1. Den vorhandenen `mixtransport.Scheduler` und VeilMix v2 niemals mit dem
+1. Den vorhandenen `mixtransport.Scheduler` und ENIG-Mix v2 niemals mit dem
    direkten HTTP-Transport als „anonym“ verdrahten.
    Produktive Node-Links müssen über `transportauth` laufen: TLS 1.3,
    `X25519MLKEM768` und exaktes Pinning des Ed25519-Anteils der vollständig

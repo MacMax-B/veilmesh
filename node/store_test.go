@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"veilmesh/client"
+	"propagare/client"
 )
 
 func TestDiskStoreChargesEncodedRecordAndFixedOverhead(t *testing.T) {
@@ -91,7 +91,7 @@ func TestDiskStoreRejectsRecordWhoseFilenameDoesNotMatchItemID(t *testing.T) {
 
 func TestDiskStoreCleansAbandonedPrivateTemporary(t *testing.T) {
 	directory := t.TempDir()
-	path := filepath.Join(directory, ".veilmesh-private-abandoned")
+	path := filepath.Join(directory, ".propagare-private-abandoned")
 	if err := os.WriteFile(path, []byte("ciphertext"), 0o600); err != nil {
 		t.Fatal(err)
 	}

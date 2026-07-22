@@ -1,4 +1,4 @@
-# VeilMesh repository instructions
+# Propagare repository instructions
 
 Read `SECURITY.md`, `docs/ARCHITECTURE.md`, and `docs/CODEX-ANLEITUNG.md` before
 changing protocol, crypto, transport, storage, account, or group code.

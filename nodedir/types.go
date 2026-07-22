@@ -1,4 +1,4 @@
-// Package nodedir implements VeilMesh's bounded, signed IP node directory.
+// Package nodedir implements Propagare's bounded, signed IP node directory.
 //
 // The directory is a discovery and availability mechanism, not an anonymity
 // mechanism. Node endpoints are intentionally public. Membership is admitted
@@ -17,8 +17,8 @@ import (
 	"strconv"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 const (

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
+	"propagare/pqcrypto"
+	"propagare/protocol"
 )
 
 func clientStoreKey(t *testing.T) []byte {

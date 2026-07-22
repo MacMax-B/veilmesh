@@ -345,7 +345,7 @@ func TestCommandParserRejectsTamperingAndLimits(t *testing.T) {
 	object["version"] = float64(1)
 	tampered, _ = json.Marshal(object)
 	if _, err := DecodeCommand(tampered, now); err == nil {
-		t.Fatal("superseded VeilMix v1 command was accepted by v2")
+		t.Fatal("superseded ENIG-Mix v1 command was accepted by v2")
 	}
 	if _, err := NewCommand(KindStore, make([]byte, MaxCommandPayloadBytes+1), now, time.Minute); err == nil {
 		t.Fatal("oversized command payload was accepted")

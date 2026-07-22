@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 func testSigner(t *testing.T) *pqcrypto.HybridSigner {

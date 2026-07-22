@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/pqcrypto"
-	"veilmesh/protocol"
-	"veilmesh/transportauth"
+	"propagare/pqcrypto"
+	"propagare/protocol"
+	"propagare/transportauth"
 )
 
 type ReachabilityProber interface {

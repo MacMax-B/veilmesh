@@ -42,7 +42,7 @@ Abhängigkeit bleibt dennoch im regulären Update- und Scanprozess.
 | hoch | Es gab keine kryptografische Client-Bestätigung, dass ein Empfänger eine konkrete Nachricht authentifiziert hatte. | Hybrid gerätesignierte Nachrichten und Client-Zustellbelege binden beide Konten, Geräte, Profilrevision, Message-ID, Inhaltshash und Zeitgrenzen. |
 | mittel | Ein früher zertifiziertes, inzwischen entferntes Gerät hätte allein über sein altes Zertifikat authentisch wirken können. | Nachricht und Beleg müssen zusätzlich im aktuell verifizierten, revisionsgepinnten Profil als aktives Gerät enthalten sein. |
 | mittel | Wiederholte gültige Nachrichten konnten oberhalb eines schwachen Providers erneut ausgeliefert werden. | Der strikte Pfad verlangt einen persistenten atomaren Replay-Store zusätzlich zum Ratchet-Replayschutz. |
-| hoch | Ein aktivitätsabhängiger Direkttransport würde Kommunikationshäufigkeit und Online-Aktionen offenlegen. | VeilMix v2 sendet pro aktivem 5-Sekunden-Slot genau ein festes 8-KiB-Real/Poll/Cover-Paket und stoppt bei Timing-/Linkfehlern. |
+| hoch | Ein aktivitätsabhängiger Direkttransport würde Kommunikationshäufigkeit und Online-Aktionen offenlegen. | ENIG-Mix v2 sendet pro aktivem 5-Sekunden-Slot genau ein festes 8-KiB-Real/Poll/Cover-Paket und stoppt bei Timing-/Linkfehlern. |
 | hoch | Frei konfigurierbare Paketgrößen und Pollkadenzen hätten einzelne Clients fingerprintbar gemacht. | v2 akzeptiert ausschließlich das gemeinsame moderate Profil 8 KiB / 5 s / Poll in jedem 6. Slot; v1 und individuelle Abweichungen werden abgelehnt. |
 | hoch | Eine vermeintlich eigene PQ-Onion-Konstruktion wäre unanalysierte Kryptografie gewesen. | Onion, SURB, Replay und Routing-Key-FS bleiben hinter einer zwingend auditierten PQ-hybriden Provider-Grenze; kein eigenes Paketformat wurde erfunden. |
 | mittel | Queue-Überlauf, abgelaufene Commands oder falsche Provider-Paketgrößen konnten Traffic-Lücken beziehungsweise Ressourcenarbeit erzeugen. | Queue wird vor Providerarbeit reserviert; abgelaufene Commands werden durch Cover ersetzt; Paket-, Payload-, Lebenszeit- und Dispatch-Grenzen sind hart. |
@@ -69,7 +69,7 @@ Mixnet, Key Transparency oder OS-spezifische Secret-Vault-Adapter. Die neuen
 Provider-Grenzen verhindern unsicheren Produktbetrieb, sie implementieren diese
 externen Systeme nicht selbst.
 
-Der VeilMix-v2-Command-Layer und moderate Cover-Scheduler sind implementiert.
+Der ENIG-Mix-v2-Command-Layer und moderate Cover-Scheduler sind implementiert.
 Weiterhin nicht enthalten sind der konkrete auditierte PQ-hybride Onion-
 Provider, uniforme Downlink-/SURB-Implementierung, Courier, Mix-PKI und reale
 Relays. Daher bleibt die Produktbehauptung „metadatenanonym“ gesperrt.
@@ -105,7 +105,7 @@ NAT-/TURN-Matrizen und eine Live-Kompromittierung des Endgeräts.
 - manuelles Review aller Go- und Sicherheits-/Architekturdateien
 - positive und negative Unit-/Integrationstests
 - aktive Fuzz-Kurzläufe für SDP, Netzwerk-JSON, Profile, Nachrichten,
-  Client-Zustellbelege, VeilMix-Commands, Direct-Ciphertext, Stored Items sowie
+  Client-Zustellbelege, ENIG-Mix-Commands, Direct-Ciphertext, Stored Items sowie
   kanonische Call-/Datei-IDs
 - `go test -count=1 ./...`
 - `go test -race -count=1 ./...`

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"veilmesh/account"
-	"veilmesh/identity"
-	"veilmesh/protocol"
+	"propagare/account"
+	"propagare/identity"
+	"propagare/protocol"
 )
 
 const MaxRatchetSkippedKeys = 2048
@@ -38,7 +38,7 @@ type RoutedCiphertext struct {
 
 // RatchetProvider is a narrow boundary for an audited implementation. The
 // provider owns session state, prekeys, skipped-key limits, key deletion, and
-// replay handling at the cryptographic layer. VeilMesh does not implement a
+// replay handling at the cryptographic layer. Propagare does not implement a
 // custom ratchet behind this interface.
 type RatchetProvider interface {
 	Security() RatchetSecurity

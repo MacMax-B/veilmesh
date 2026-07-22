@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"veilmesh/node"
-	"veilmesh/pqcrypto"
-	"veilmesh/transportauth"
+	"propagare/node"
+	"propagare/pqcrypto"
+	"propagare/transportauth"
 )
 
 func TestDirectMessageReplicatesFallsBackAuditsAndDeletes(t *testing.T) {

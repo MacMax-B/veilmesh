@@ -16,9 +16,9 @@ const (
 var (
 	ErrPacketProviderRequired = errors.New("audited post-quantum hybrid mix packet provider required")
 	ErrPrivateLinkRequired    = errors.New("audited post-quantum fixed-frame entry link required")
-	ErrQueueFull              = errors.New("VeilMix outbound queue is full")
-	ErrCommandExpired         = errors.New("VeilMix command expired before dispatch")
-	ErrScheduleDiscontinuity  = errors.New("VeilMix constant-rate schedule was interrupted")
+	ErrQueueFull              = errors.New("ENIG-Mix outbound queue is full")
+	ErrCommandExpired         = errors.New("ENIG-Mix command expired before dispatch")
+	ErrScheduleDiscontinuity  = errors.New("ENIG-Mix constant-rate schedule was interrupted")
 )
 
 type Config struct {
@@ -42,7 +42,7 @@ type Ticket struct {
 
 func (ticket Ticket) Wait(ctx context.Context) (DispatchResult, error) {
 	if ticket.result == nil {
-		return DispatchResult{}, errors.New("invalid VeilMix dispatch ticket")
+		return DispatchResult{}, errors.New("invalid ENIG-Mix dispatch ticket")
 	}
 	select {
 	case result := <-ticket.result:
@@ -96,7 +96,7 @@ func NewScheduler(config Config, provider PacketProvider, sink PacketSink) (*Sch
 		config.MaxQueue <= 0 || config.MaxQueue > MaxQueueEntries ||
 		config.MaxLateness <= 0 || config.MaxLateness >= config.SlotInterval ||
 		config.DispatchBudget <= 0 || config.DispatchBudget >= config.SlotInterval {
-		return nil, errors.New("invalid VeilMix scheduler configuration")
+		return nil, errors.New("invalid ENIG-Mix scheduler configuration")
 	}
 	if provider == nil || !validPacketSecurity(provider.Security()) {
 		return nil, ErrPacketProviderRequired
@@ -124,7 +124,7 @@ func validLinkSecurity(security LinkSecurity) bool {
 // instant. Queue capacity is reserved before provider work or allocation.
 func (scheduler *Scheduler) Enqueue(ctx context.Context, command Command, now time.Time) (Ticket, error) {
 	if scheduler == nil || scheduler.provider == nil {
-		return Ticket{}, errors.New("VeilMix scheduler is unavailable")
+		return Ticket{}, errors.New("ENIG-Mix scheduler is unavailable")
 	}
 	if err := ValidateCommand(command, now); err != nil {
 		return Ticket{}, err
@@ -194,12 +194,12 @@ func (scheduler *Scheduler) validatePrepared(prepared PreparedPacket) error {
 // the run, because continuing would make the advertised traffic shape false.
 func (scheduler *Scheduler) Run(ctx context.Context) (runErr error) {
 	if scheduler == nil {
-		return errors.New("VeilMix scheduler is unavailable")
+		return errors.New("ENIG-Mix scheduler is unavailable")
 	}
 	scheduler.mu.Lock()
 	if scheduler.running || scheduler.terminalErr != nil {
 		scheduler.mu.Unlock()
-		return errors.New("VeilMix scheduler cannot be started more than once")
+		return errors.New("ENIG-Mix scheduler cannot be started more than once")
 	}
 	scheduler.running = true
 	scheduler.mu.Unlock()
@@ -293,7 +293,7 @@ func (scheduler *Scheduler) dispatchSlot(ctx context.Context, now time.Time) err
 		queued.result <- DispatchResult{RequestID: queued.requestID, SentAt: now.UTC(), Err: err}
 	}
 	if err != nil {
-		return fmt.Errorf("send fixed VeilMix slot: %w", err)
+		return fmt.Errorf("send fixed ENIG-Mix slot: %w", err)
 	}
 	return nil
 }

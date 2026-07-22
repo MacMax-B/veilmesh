@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"veilmesh/nodedir"
+	"propagare/nodedir"
 )
 
 type DirectoryBootstrap struct {

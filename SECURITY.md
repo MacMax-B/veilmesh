@@ -100,12 +100,12 @@ konstant getakteten Fetch-Pfad geladen werden. Der bestehende HTTP-Core darf
 keine Metadaten-Privacy-Eigenschaft deklarieren und wird von
 `message.NewStrictPipeline` nicht als privater Transport akzeptiert.
 
-VeilMix v2 implementiert die eigene moderate konstante Verkehrslogik, aber noch keine
+ENIG-Mix v2 implementiert die eigene moderate konstante Verkehrslogik, aber noch keine
 produktive Anonymität: Der auditierte PQ-hybride Onion-Provider, uniforme
 Downlink-/SURB-Antworten, Courier-Replikation, Mix-PKI und reale Relays fehlen.
 Die Assurance-Felder der Provider sind nur Integrationssperren und kein
 kryptografischer Auditbeweis. Details und das genaue Angreifermodell stehen in
-[`docs/VEILMIX-V2.md`](docs/VEILMIX-V2.md).
+[`docs/ENIG-MIX-V2.md`](docs/ENIG-MIX-V2.md).
 
 Das Referenzprofil mit 8 KiB alle 5 Sekunden verbraucht bei ununterbrochenem
 Betrieb ungefähr 135 MiB Upstream pro Tag. Ein anderes Profil muss für eine

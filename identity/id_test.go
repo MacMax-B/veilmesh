@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 func TestENIGIdentifiersAreTypedAndSelfCertifying(t *testing.T) {

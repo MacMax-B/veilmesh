@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"veilmesh/node"
-	"veilmesh/nodedir"
-	"veilmesh/protocol"
-	"veilmesh/transportauth"
+	"propagare/node"
+	"propagare/nodedir"
+	"propagare/protocol"
+	"propagare/transportauth"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 	flag.Int64Var(&config.StorageCapacity, "capacity", config.StorageCapacity, "storage capacity in bytes")
 	advertiseIP := flag.String("advertise-ip", "", "literal public IP advertised in the signed node directory")
 	advertisePort := flag.Uint("advertise-port", 8787, "TCP port advertised in the signed node directory")
-	seedFile := flag.String("node-seeds", "./veilmesh-seeds.json", "pinned standard node list shared by clients and nodes")
+	seedFile := flag.String("node-seeds", "./propagare-seeds.json", "pinned standard node list shared by clients and nodes")
 	directoryQuorum := flag.Int("node-quorum", 3, "number of pinned seed attestations required for admission")
 	directoryLease := flag.Duration("node-lease", time.Hour, "signed node lease lifetime")
 	directorySync := flag.Duration("node-sync", 10*time.Minute, "node-directory reconciliation interval")
@@ -103,6 +103,6 @@ func main() {
 		MaxHeaderBytes:    16 * 1024,
 		TLSConfig:         transportTLS,
 	}
-	log.Printf("veilmesh node %s listening with CA-PKI-free pinned TLS on %s", signer.PublicIdentity().NodeID, config.ListenAddress)
+	log.Printf("propagare node %s listening with CA-PKI-free pinned TLS on %s", signer.PublicIdentity().NodeID, config.ListenAddress)
 	log.Fatal(httpServer.ListenAndServeTLS("", ""))
 }

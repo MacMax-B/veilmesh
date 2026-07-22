@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"veilmesh/pqcrypto"
+	"propagare/pqcrypto"
 )
 
 func TestPinnedPKIFreeHybridTransport(t *testing.T) {

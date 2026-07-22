@@ -1,4 +1,4 @@
-module veilmesh
+module propagare
 
 go 1.26
 
