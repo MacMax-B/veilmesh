@@ -68,10 +68,14 @@ func messageSigningBytes(message SignedMessage) ([]byte, error) {
 	return json.Marshal(message)
 }
 
+// NewDirect binds an application-level expiry into the signed message. This
+// expiry travels only inside the end-to-end encrypted envelope and is never
+// visible to nodes; node-side item storage always uses the fixed protocol
+// retention window. It may not exceed that window.
 func NewDirect(sender *account.LocalAccount, recipientID string, body []byte, now time.Time, retention time.Duration) (SignedMessage, error) {
 	if sender == nil || !identity.ValidAccountID(recipientID) || recipientID == sender.ID() ||
 		len(body) == 0 || len(body) > MaxBodyBytes || now.IsZero() || retention <= 0 ||
-		retention > protocol.DefaultMaxRetention {
+		retention > protocol.FixedItemRetention {
 		return SignedMessage{}, errors.New("invalid direct message input")
 	}
 	messageID, err := randomMessageID()
@@ -109,7 +113,7 @@ func validateDirectStructure(message SignedMessage, expectedRecipient string, no
 		message.SenderProfileRevision == 0 || message.SenderDevice.AccountID != message.SenderID || len(message.Body) == 0 ||
 		len(message.Body) > MaxBodyBytes || message.CreatedAt.IsZero() || message.ExpiresAt.IsZero() ||
 		message.CreatedAt.After(now.Add(5*time.Minute)) || !message.ExpiresAt.After(message.CreatedAt) ||
-		message.ExpiresAt.Sub(message.CreatedAt) > protocol.DefaultMaxRetention || now.After(message.ExpiresAt.Add(5*time.Minute)) {
+		message.ExpiresAt.Sub(message.CreatedAt) > protocol.FixedItemRetention || now.After(message.ExpiresAt.Add(5*time.Minute)) {
 		return errors.New("invalid direct message")
 	}
 	return nil

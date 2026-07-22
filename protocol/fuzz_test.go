@@ -18,6 +18,6 @@ func FuzzValidateItem(f *testing.F) {
 			DeleteTokenHash: deleteHash,
 			Payload:         payload,
 		}
-		_ = ValidateItem(item, time.Now(), DefaultMaxRetention, DefaultMaxItemBytes)
+		_ = ValidateItem(item, time.Now(), DefaultMaxItemBytes)
 	})
 }

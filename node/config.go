@@ -16,7 +16,6 @@ type Config struct {
 	BaseDifficulty        uint8
 	EpochSeconds          int64
 	MaxItemBytes          int
-	MaxRetention          time.Duration
 	StorageCapacity       int64
 	MailboxQuota          int64
 	MaxFetchItems         int
@@ -33,7 +32,6 @@ func DefaultConfig() Config {
 		BaseDifficulty:        16,
 		EpochSeconds:          10 * 60,
 		MaxItemBytes:          protocol.DefaultMaxItemBytes,
-		MaxRetention:          protocol.DefaultMaxRetention,
 		StorageCapacity:       10 * 1024 * 1024 * 1024,
 		MailboxQuota:          16 * 1024 * 1024,
 		MaxFetchItems:         protocol.DefaultMaxFetchItems,
@@ -47,7 +45,6 @@ func (c Config) Validate() error {
 	if c.BaseDifficulty > protocol.MaxWorkDifficulty-2 ||
 		c.EpochSeconds < protocol.MinWorkEpochSeconds || c.EpochSeconds > protocol.MaxWorkEpochSeconds ||
 		c.MaxItemBytes <= 0 || c.MaxItemBytes > protocol.DefaultMaxItemBytes ||
-		c.MaxRetention <= 0 || c.MaxRetention > protocol.DefaultMaxRetention ||
 		c.StorageCapacity <= 0 || c.MailboxQuota <= 0 || c.MailboxQuota > c.StorageCapacity ||
 		c.MaxFetchItems <= 0 || c.MaxFetchItems > protocol.DefaultMaxFetchItems ||
 		c.MaxFetchBytes <= 0 || c.MaxFetchBytes > protocol.DefaultMaxFetchBytes ||

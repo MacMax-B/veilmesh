@@ -15,6 +15,12 @@
 - Abholung löscht nicht automatisch. Erst ein vollständig authentifizierter
   Dateidownload löst optional die Löschung aus.
 - Feste Größen-, Zeit-, Request- und Quotenlimits werden vor Speicherung geprüft.
+- Jedes gespeicherte Item besitzt dasselbe protokollweit feste 60-Tage-
+  Ablauffenster. Nodes erzwingen exakte Gleichheit von Ablauf- und
+  Erstellungszeit plus Fenster; ein absendergewähltes Ablaufdatum kann deshalb
+  kein Unterscheidungsmerkmal in die Node-sichtbaren Metadaten einbetten.
+  Anwendungsseitige Ablaufzeiten reisen ausschließlich Ende-zu-Ende-
+  verschlüsselt in der Nachricht selbst.
 - Fetch-Antworten sind pro Node und über alle Replikate gemeinsam auf Itemzahl
   und Bytes begrenzt. Große Dateien werden in begrenzten Fetch-Batches geladen.
 - Produktive Client↔Node- und Node↔Node-Verbindungen verwenden ausschließlich

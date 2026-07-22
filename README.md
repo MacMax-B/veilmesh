@@ -14,7 +14,9 @@ explizit aufgeführt.
 
 - Client-Core als öffentliches Go-Paket ohne Benutzeroberfläche
 - Node-Server mit persistenter, automatisch ablaufender Speicherung
-- maximal 60 Tage Aufbewahrung; Clients können kürzere Zeiten verlangen
+- festes Speicherfenster: jedes Item läuft exakt 60 Tage nach Erstellung ab;
+  ein anderes Ablaufdatum wird abgelehnt, früheres Entfernen geht nur über die
+  geheime Lösch-Capability
 - Rechenporto (Proof of Work), das bei hoher Speicherauslastung steigt
 - hybride ML-KEM-768/X25519-HPKE-Verschlüsselung für versiegelte Nachrichten
 - hybride Ed25519- und ML-DSA-65-Signaturen für Node-Belege und Administration
@@ -170,12 +172,12 @@ core, _ := client.New(client.Config{
 
 recipient, _ := pqcrypto.GenerateHybridKEMKeyPair()
 routeTag, _ := client.RandomCapability()
+// Jedes Item wird exakt für das feste 60-Tage-Protokollfenster gespeichert.
 delivery, err := core.SendDirect(
     ctx,
     recipient.PublicKey,
     routeTag,
     []byte("Hallo"),
-    7*24*time.Hour,
 )
 ```
 

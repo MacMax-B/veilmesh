@@ -100,11 +100,9 @@ func directAAD(routeTag string, createdAt, expiresAt time.Time) []byte {
 // SendDirect is a development/bootstrap envelope. It does not provide a
 // message ratchet, forward secrecy, post-compromise security, or metadata
 // anonymity. Production messaging must use message.StrictPipeline with audited
-// providers.
-func (c *Core) SendDirect(ctx context.Context, recipientHPKEPublicKey []byte, routeTag string, plaintext []byte, retention time.Duration) (Delivery, error) {
-	if retention <= 0 || retention > protocol.DefaultMaxRetention {
-		return Delivery{}, protocol.ErrRetentionTooLong
-	}
+// providers. Every stored item lives for exactly the fixed protocol retention
+// window; earlier removal requires the delete capability.
+func (c *Core) SendDirect(ctx context.Context, recipientHPKEPublicKey []byte, routeTag string, plaintext []byte) (Delivery, error) {
 	if routeTag == "" {
 		var err error
 		routeTag, err = RandomCapability()
@@ -119,10 +117,7 @@ func (c *Core) SendDirect(ctx context.Context, recipientHPKEPublicKey []byte, ro
 		return Delivery{}, errors.New("invalid recipient HPKE public key")
 	}
 	createdAt := time.Now().UTC().Truncate(time.Millisecond)
-	expiresAt := createdAt.Add(retention).Truncate(time.Millisecond)
-	if !expiresAt.After(createdAt) {
-		return Delivery{}, errors.New("retention is below timestamp precision")
-	}
+	expiresAt := createdAt.Add(protocol.FixedItemRetention)
 	padded, err := pqcrypto.PadMessage(plaintext)
 	if err != nil {
 		return Delivery{}, err
@@ -158,20 +153,18 @@ func (c *Core) SendDirect(ctx context.Context, recipientHPKEPublicKey []byte, ro
 
 // StoreOpaque stores data that is already end-to-end encrypted, for example a
 // fixed-size encrypted file chunk. The node never receives the delete token.
-func (c *Core) StoreOpaque(ctx context.Context, routeTag string, encryptedPayload, deleteToken []byte, retention time.Duration) (Delivery, error) {
+// The item expires exactly after the fixed protocol retention window.
+func (c *Core) StoreOpaque(ctx context.Context, routeTag string, encryptedPayload, deleteToken []byte) (Delivery, error) {
 	if !protocol.ValidRouteTag(routeTag) || len(encryptedPayload) == 0 ||
 		len(encryptedPayload) > protocol.DefaultMaxItemBytes || len(deleteToken) != protocol.CapabilityBytes {
 		return Delivery{}, errors.New("invalid opaque item capabilities")
-	}
-	if retention <= 0 || retention > protocol.DefaultMaxRetention {
-		return Delivery{}, protocol.ErrRetentionTooLong
 	}
 	createdAt := time.Now().UTC().Truncate(time.Millisecond)
 	item := protocol.StoredItem{
 		Version:         protocol.ProtocolVersion,
 		RouteTag:        routeTag,
 		CreatedAt:       createdAt,
-		ExpiresAt:       createdAt.Add(retention).Truncate(time.Millisecond),
+		ExpiresAt:       createdAt.Add(protocol.FixedItemRetention),
 		DeleteTokenHash: pqcrypto.DeleteTokenHash(deleteToken),
 		Payload:         append([]byte(nil), encryptedPayload...),
 	}
@@ -180,7 +173,7 @@ func (c *Core) StoreOpaque(ctx context.Context, routeTag string, encryptedPayloa
 }
 
 func OpenDirectItem(privateHPKEKey []byte, item protocol.StoredItem) ([]byte, error) {
-	if err := protocol.ValidateItem(item, item.CreatedAt, protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes); err != nil {
+	if err := protocol.ValidateItem(item, item.CreatedAt, protocol.DefaultMaxItemBytes); err != nil {
 		return nil, protocol.ErrInvalidItem
 	}
 	var sealed protocol.DirectCiphertext
@@ -200,7 +193,7 @@ func OpenDirectItem(privateHPKEKey []byte, item protocol.StoredItem) ([]byte, er
 
 func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, deleteToken []byte) (Delivery, error) {
 	now := time.Now().UTC()
-	if err := protocol.ValidateItem(item, now, protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes); err != nil {
+	if err := protocol.ValidateItem(item, now, protocol.DefaultMaxItemBytes); err != nil {
 		return Delivery{}, err
 	}
 	if len(deleteToken) != protocol.CapabilityBytes ||
@@ -241,7 +234,7 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 			delivery.FailedNodes[n.Identity.NodeID] = err.Error()
 			continue
 		}
-		if len(item.Payload) > parameters.MaxItemBytes || item.ExpiresAt.Sub(now) > parameters.MaxRetention+time.Minute {
+		if len(item.Payload) > parameters.MaxItemBytes {
 			err := errors.New("item violates node limits")
 			delivery.FailedNodes[n.Identity.NodeID] = err.Error()
 			continue
@@ -375,7 +368,7 @@ func (c *Core) Fetch(ctx context.Context, routeTags []string) ([]protocol.Stored
 		}
 		for _, item := range items {
 			if _, asked := requested[item.RouteTag]; !asked ||
-				protocol.ValidateItem(item, time.Now(), protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes) != nil {
+				protocol.ValidateItem(item, time.Now(), protocol.DefaultMaxItemBytes) != nil {
 				responseValid = false
 				continue
 			}
@@ -602,7 +595,7 @@ func (c *Core) LoadDelivery(ctx context.Context, itemID string, now time.Time) (
 		return Delivery{}, err
 	}
 	if delivery.Item.ItemID != itemID ||
-		protocol.ValidateItem(delivery.Item, now, protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes) != nil ||
+		protocol.ValidateItem(delivery.Item, now, protocol.DefaultMaxItemBytes) != nil ||
 		!record.CreatedAt.Equal(delivery.Item.CreatedAt) || !record.ExpiresAt.Equal(delivery.Item.ExpiresAt) ||
 		len(delivery.DeleteToken) != protocol.CapabilityBytes ||
 		!bytes.Equal(delivery.Item.DeleteTokenHash, pqcrypto.DeleteTokenHash(delivery.DeleteToken)) {

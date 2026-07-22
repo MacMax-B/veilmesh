@@ -3,8 +3,11 @@ package protocol
 import "time"
 
 const (
-	ProtocolVersion      = 1
-	DefaultMaxRetention  = 60 * 24 * time.Hour
+	ProtocolVersion = 1
+	// FixedItemRetention is the protocol-wide storage window. Every stored
+	// item expires exactly this long after creation; nodes reject any other
+	// expiry. Earlier removal is only possible through the delete capability.
+	FixedItemRetention   = 60 * 24 * time.Hour
 	DefaultMaxItemBytes  = 320 * 1024
 	DefaultMaxFileBytes  = 64 * 1024 * 1024
 	DefaultFileChunkSize = 256 * 1024
@@ -97,14 +100,15 @@ type StorageProof struct {
 	Signature   HybridSignature `json:"signature"`
 }
 
+// NodeParameters intentionally carries no retention field: the storage
+// window is a fixed protocol constant, not a negotiable node parameter.
 type NodeParameters struct {
-	ProtocolVersion uint8         `json:"protocol_version"`
-	Difficulty      uint8         `json:"difficulty"`
-	EpochSeconds    int64         `json:"epoch_seconds"`
-	MaxItemBytes    int           `json:"max_item_bytes"`
-	MaxRetention    time.Duration `json:"max_retention"`
-	StorageUsed     int64         `json:"storage_used"`
-	StorageCapacity int64         `json:"storage_capacity"`
+	ProtocolVersion uint8 `json:"protocol_version"`
+	Difficulty      uint8 `json:"difficulty"`
+	EpochSeconds    int64 `json:"epoch_seconds"`
+	MaxItemBytes    int   `json:"max_item_bytes"`
+	StorageUsed     int64 `json:"storage_used"`
+	StorageCapacity int64 `json:"storage_capacity"`
 }
 
 type DirectCiphertext struct {

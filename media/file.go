@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"veilmesh/client"
 	"veilmesh/protocol"
@@ -188,7 +187,7 @@ func wipe(value []byte) {
 	}
 }
 
-func Store(ctx context.Context, core *client.Core, encrypted EncryptedFile, retention time.Duration) ([]client.Delivery, error) {
+func Store(ctx context.Context, core *client.Core, encrypted EncryptedFile) ([]client.Delivery, error) {
 	if err := validateManifest(encrypted.Secret, encrypted.Manifest); err != nil {
 		return nil, err
 	}
@@ -203,7 +202,7 @@ func Store(ctx context.Context, core *client.Core, encrypted EncryptedFile, rete
 			!bytes.Equal(chunk.DeleteToken, encrypted.Secret.DeleteTokens[index].DeleteToken) {
 			return deliveries, errors.New("encrypted chunk metadata mismatch")
 		}
-		delivery, err := core.StoreOpaque(ctx, chunk.Metadata.RouteTag, chunk.Payload, chunk.DeleteToken, retention)
+		delivery, err := core.StoreOpaque(ctx, chunk.Metadata.RouteTag, chunk.Payload, chunk.DeleteToken)
 		if err != nil {
 			return deliveries, fmt.Errorf("store encrypted chunk %d: %w", chunk.Metadata.Index, err)
 		}

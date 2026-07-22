@@ -108,7 +108,7 @@ func TestRetrieveBatchesFilesBeyondSingleFetchLimits(t *testing.T) {
 	for _, chunk := range encrypted.Chunks {
 		item := protocol.StoredItem{
 			Version: protocol.ProtocolVersion, RouteTag: chunk.Metadata.RouteTag,
-			CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+			CreatedAt: now, ExpiresAt: now.Add(protocol.FixedItemRetention),
 			DeleteTokenHash: pqcrypto.DeleteTokenHash(chunk.DeleteToken), Payload: chunk.Payload,
 		}
 		item.ItemID = protocol.ComputeItemID(item)

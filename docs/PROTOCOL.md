@@ -6,7 +6,7 @@
 |---|---|---|
 | `GET` | `/v1/health` | knapper Verfügbarkeitscheck |
 | `GET` | `/v1/identity` | hybride öffentliche Node-Identität |
-| `GET` | `/v1/parameters` | Größen-, Zeit-, PoW- und Kapazitätsgrenzen |
+| `GET` | `/v1/parameters` | Größen-, PoW- und Kapazitätsgrenzen |
 | `GET` | `/v1/nodes` | hybrid signierter Snapshot aller aktiven Node-Leases |
 | `POST` | `/v1/nodes/register` | signierte Lease beim gepinnten Seed attestieren lassen |
 | `POST` | `/v1/nodes/challenge` | frische Rückruf-Challenge hybrid signieren |
@@ -114,6 +114,14 @@ Die Item-ID bindet:
 
 Der PoW-Nonce ist nicht Bestandteil der Item-ID, sodass derselbe Ciphertext auf
 mehreren Nodes und in späteren Epochen repariert werden kann.
+
+## Festes Ablauffenster
+
+Jedes Item läuft exakt 60 Tage nach seiner Erstellungszeit ab. Nodes erzwingen
+`expires_at == created_at + 60 Tage`; jedes andere Ablaufdatum wird als
+ungültig abgelehnt. Früheres Entfernen ist nur über die geheime
+Lösch-Capability möglich. Die Aufbewahrung ist eine Protokollkonstante und
+deshalb bewusst kein Feld in `/v1/parameters`.
 
 ## Rechenporto
 

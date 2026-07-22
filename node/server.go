@@ -118,7 +118,6 @@ func (s *Server) parameters() protocol.NodeParameters {
 		Difficulty:      s.config.EffectiveDifficulty(used),
 		EpochSeconds:    s.config.EpochSeconds,
 		MaxItemBytes:    s.config.MaxItemBytes,
-		MaxRetention:    s.config.MaxRetention,
 		StorageUsed:     used,
 		StorageCapacity: s.config.StorageCapacity,
 	}
@@ -248,7 +247,7 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	if err := protocol.ValidateItem(item, now, s.config.MaxRetention, s.config.MaxItemBytes); err != nil {
+	if err := protocol.ValidateItem(item, now, s.config.MaxItemBytes); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}

@@ -116,7 +116,7 @@ func NewDiskStore(dir string, capacity, routeQuota int64) (*DiskStore, error) {
 			removedFiles = true
 			continue
 		}
-		if protocol.ValidateItem(item, now, protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes) != nil ||
+		if protocol.ValidateItem(item, now, protocol.DefaultMaxItemBytes) != nil ||
 			entry.Name() != item.ItemID+".json" {
 			_ = os.Remove(path)
 			removedFiles = true
@@ -199,7 +199,7 @@ func (s *DiskStore) Put(item protocol.StoredItem) error {
 	if s.closed {
 		return ErrStoreClosed
 	}
-	if err := protocol.ValidateItem(item, time.Now(), protocol.DefaultMaxRetention, protocol.DefaultMaxItemBytes); err != nil {
+	if err := protocol.ValidateItem(item, time.Now(), protocol.DefaultMaxItemBytes); err != nil {
 		return err
 	}
 	if _, ok := s.items[item.ItemID]; ok {

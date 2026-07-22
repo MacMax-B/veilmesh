@@ -83,9 +83,16 @@ Transparency-Struktur erforderlich.
 
 ## Aufbewahrung
 
-Das Protokoll verwendet maximal 60 Tage als technische Annäherung an zwei
-Monate. Clients können jede kürzere Dauer wählen. Nodes lehnen längere Zeiträume
-ab und entfernen abgelaufene Items regelmäßig.
+Das Protokoll verwendet ein festes Speicherfenster von 60 Tagen als technische
+Annäherung an zwei Monate. Jedes Item läuft exakt 60 Tage nach seiner
+Erstellung ab; Nodes lehnen jedes andere Ablaufdatum ab und entfernen
+abgelaufene Items regelmäßig. Früheres Entfernen ist ausschließlich über die
+geheime Lösch-Capability möglich.
+
+Das Fenster ist bewusst nicht wählbar: Eine absenderdefinierte Dauer würde ein
+für Nodes sichtbares Unterscheidungsmerkmal in die Item-Metadaten einbetten.
+Kürzere anwendungsseitige Ablaufzeiten gehören in die Ende-zu-Ende-
+verschlüsselte Nachricht und bleiben für Nodes unsichtbar.
 
 Ein Kalenderzeitraum von exakt zwei Monaten ist absichtlich nicht verwendet,
 weil Nodes in verschiedenen Zeitzonen und ohne Kontoinformationen deterministisch

@@ -50,7 +50,7 @@ func validClientItem(t *testing.T) (protocol.StoredItem, []byte) {
 		Version:         protocol.ProtocolVersion,
 		RouteTag:        routeTag,
 		CreatedAt:       now,
-		ExpiresAt:       now.Add(time.Hour),
+		ExpiresAt:       now.Add(protocol.FixedItemRetention),
 		DeleteTokenHash: pqcrypto.DeleteTokenHash(deleteToken),
 		Payload:         []byte("opaque ciphertext"),
 	}
@@ -133,7 +133,6 @@ func TestDiscoveryRejectsRedirectsAndInvalidParameters(t *testing.T) {
 				Difficulty:      protocol.MaxWorkDifficulty + 1,
 				EpochSeconds:    600,
 				MaxItemBytes:    protocol.DefaultMaxItemBytes,
-				MaxRetention:    protocol.DefaultMaxRetention,
 				StorageCapacity: 1,
 			}), nil
 		})},
@@ -180,7 +179,7 @@ func TestFetchRejectsPerNodeAndCombinedItemAmplification(t *testing.T) {
 			tokenHash := sha256.Sum256([]byte(fmt.Sprintf("token-%d", index)))
 			item := protocol.StoredItem{
 				Version: protocol.ProtocolVersion, RouteTag: routeTag, CreatedAt: now,
-				ExpiresAt: now.Add(time.Hour), DeleteTokenHash: tokenHash[:], Payload: []byte{byte(index)},
+				ExpiresAt: now.Add(protocol.FixedItemRetention), DeleteTokenHash: tokenHash[:], Payload: []byte{byte(index)},
 			}
 			item.ItemID = protocol.ComputeItemID(item)
 			items = append(items, item)
@@ -267,7 +266,6 @@ func TestMaliciousDifficultyOutlierCannotAmplifyProofOfWork(t *testing.T) {
 						Difficulty:      difficulty,
 						EpochSeconds:    600,
 						MaxItemBytes:    protocol.DefaultMaxItemBytes,
-						MaxRetention:    protocol.DefaultMaxRetention,
 						StorageCapacity: 1 << 30,
 					}), nil
 				case "/v1/items":

@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrInvalidItem      = errors.New("invalid stored item")
-	ErrRetentionTooLong = errors.New("requested retention exceeds node maximum")
+	ErrInvalidRetention = errors.New("item expiry must equal the fixed retention window")
 	ErrItemTooLarge     = errors.New("item exceeds node maximum")
 )
 
@@ -54,8 +54,8 @@ func ValidRouteTag(routeTag string) bool {
 	return err == nil && len(decoded) == CapabilityBytes
 }
 
-func ValidateItem(item StoredItem, now time.Time, maxRetention time.Duration, maxBytes int) error {
-	if maxRetention <= 0 || maxRetention > DefaultMaxRetention || maxBytes <= 0 || maxBytes > DefaultMaxItemBytes {
+func ValidateItem(item StoredItem, now time.Time, maxBytes int) error {
+	if maxBytes <= 0 || maxBytes > DefaultMaxItemBytes {
 		return ErrInvalidItem
 	}
 	if item.Version != ProtocolVersion || !ValidRouteTag(item.RouteTag) ||
@@ -65,11 +65,14 @@ func ValidateItem(item StoredItem, now time.Time, maxRetention time.Duration, ma
 	if len(item.Payload) == 0 || len(item.Payload) > maxBytes {
 		return ErrItemTooLarge
 	}
-	if item.CreatedAt.After(now.Add(5*time.Minute)) || !item.ExpiresAt.After(now) || !item.ExpiresAt.After(item.CreatedAt) {
+	if item.CreatedAt.After(now.Add(5*time.Minute)) || !item.ExpiresAt.After(now) {
 		return ErrInvalidItem
 	}
-	if item.ExpiresAt.Sub(now) > maxRetention+5*time.Minute {
-		return ErrRetentionTooLong
+	// The retention window is fixed by the protocol. A shorter or longer
+	// expiry would let senders encode distinguishing metadata into the
+	// node-visible lifetime, so exact equality is required.
+	if !item.ExpiresAt.Equal(item.CreatedAt.Add(FixedItemRetention)) {
+		return ErrInvalidRetention
 	}
 	if item.ItemID != ComputeItemID(item) {
 		return ErrInvalidItem
@@ -82,7 +85,6 @@ func ValidateNodeParameters(parameters NodeParameters) error {
 		parameters.Difficulty > MaxWorkDifficulty ||
 		parameters.EpochSeconds < MinWorkEpochSeconds || parameters.EpochSeconds > MaxWorkEpochSeconds ||
 		parameters.MaxItemBytes <= 0 || parameters.MaxItemBytes > DefaultMaxItemBytes ||
-		parameters.MaxRetention <= 0 || parameters.MaxRetention > DefaultMaxRetention ||
 		parameters.StorageUsed < 0 || parameters.StorageCapacity <= 0 ||
 		parameters.StorageUsed > parameters.StorageCapacity {
 		return errors.New("invalid node parameters")

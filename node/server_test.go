@@ -51,7 +51,7 @@ func storedTestItem(t *testing.T, routeTag string, payload []byte) protocol.Stor
 		Version:         protocol.ProtocolVersion,
 		RouteTag:        routeTag,
 		CreatedAt:       now,
-		ExpiresAt:       now.Add(time.Hour),
+		ExpiresAt:       now.Add(protocol.FixedItemRetention),
 		DeleteTokenHash: pqcrypto.DeleteTokenHash(token),
 		Payload:         payload,
 	}

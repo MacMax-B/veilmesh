@@ -79,6 +79,10 @@ AcceptDirectCall
 EndDirectCall
 ```
 
+`SetRetention` betrifft ausschließlich die anwendungsseitige, Ende-zu-Ende-
+verschlüsselte Anzeige- und Löschrichtlinie. Das Speicherfenster auf Nodes ist
+protokollweit fest (60 Tage) und für Frontends nicht konfigurierbar.
+
 Call-Signale werden ausschließlich innerhalb des verschlüsselten
 Nachrichtenkanals übertragen. Ein Frontend darf SDP weder verändern noch selbst
 signieren. Plattformcode liefert nur Audio-/Videotracks und empfängt Remote-

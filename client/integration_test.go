@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"veilmesh/node"
 	"veilmesh/pqcrypto"
@@ -70,7 +69,7 @@ func TestDirectMessageReplicatesFallsBackAuditsAndDeletes(t *testing.T) {
 	}
 	routeTag, _ := RandomCapability()
 	plaintext := []byte("private hello")
-	delivery, err := core.SendDirect(ctx, recipient.PublicKey, routeTag, plaintext, time.Hour)
+	delivery, err := core.SendDirect(ctx, recipient.PublicKey, routeTag, plaintext)
 	if err != nil {
 		t.Fatal(err)
 	}
