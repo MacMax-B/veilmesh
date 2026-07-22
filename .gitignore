@@ -1,0 +1,6 @@
+/local/
+/veilmesh-data/
+/veilmesh-node-key.json
+*.tmp
+*.log
+.DS_Store
