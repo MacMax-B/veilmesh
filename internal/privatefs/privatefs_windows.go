@@ -4,6 +4,7 @@ package privatefs
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"unsafe"
@@ -148,8 +149,11 @@ func Validate(path string, info os.FileInfo, kind Kind) error {
 	}
 	unique := trusted.unique()
 	dacl, _, err := descriptor.DACL()
-	if err != nil || dacl == nil || int(dacl.AceCount) != len(unique) {
+	if err != nil || dacl == nil {
 		return errors.New("private Windows object has an unexpected DACL")
+	}
+	if int(dacl.AceCount) != len(unique) {
+		return fmt.Errorf("private Windows object has %d DACL entries, want %d", dacl.AceCount, len(unique))
 	}
 	seen := make([]bool, len(unique))
 	expectedFlags := uint8(windows.NO_INHERITANCE)
