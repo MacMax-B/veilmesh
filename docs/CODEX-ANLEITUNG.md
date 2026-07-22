@@ -107,6 +107,9 @@ Abnahmekriterien:
    verifizierten hybriden Node-Identität. Keine CA-/SAN-Abhängigkeit ergänzen und
    keine eigene Handshake-Kryptografie bauen.
 2. `Transport` in direkte HTTP-, Onion- und Mix-Implementierungen aufteilen.
+   Der direkte Ein-Node-Pfad bleibt ausschließlich ein sichtbar nicht anonymer,
+   explizit erlaubter Bootstrapmodus. Nach einer geschützten
+   `RequireFullMix`-Entscheidung darf keine kleine Directory-Sicht downgraden.
 3. Ein geprüftes PQ-hybrides Paketformat verwenden; keine eigene Onion-Kryptografie.
 4. Client wählt Hops, nicht die Entry-Node.
 5. Ein Hop darf nie gleichzeitig Sender und finalen Speichertag kennen.

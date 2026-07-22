@@ -4,7 +4,14 @@ Alle wesentlichen Änderungen an Propagare werden in dieser Datei dokumentiert.
 
 ## Unreleased
 
-- Keine Änderungen.
+- Expliziter Ein-Node-Direktbootstrap mit automatischer Hochstufung auf eine
+  vollständige 3-Mix-/1-Courier-/3-Replikat-Route, sobald ein validierter
+  Scheduler und sieben diverse Full Nodes verfügbar sind.
+- Persistierbares `RequireFullMix`-Mindestniveau verhindert stille Downgrades
+  bei kleinen, kollabierten oder manipulierten Directory-Sichten.
+- Native macOS-SwiftUI-App auf dem separaten Client-Branch mit Liquid-Glass-
+  Gestaltung, Netzwerk-Sicherheitsdashboard, deutscher/englischer
+  Lokalisierung und fail-closed Core-Grenze.
 
 ## 0.1.0-preview.2 – 2026-07-22
 

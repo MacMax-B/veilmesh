@@ -107,6 +107,22 @@ func NewScheduler(config Config, provider PacketProvider, sink PacketSink) (*Sch
 	return &Scheduler{config: config, provider: provider, sink: sink}, nil
 }
 
+// RouteReadiness binds automatic topology upgrades to a Scheduler whose packet
+// and link assurances still satisfy every fail-closed integration requirement.
+func (scheduler *Scheduler) RouteReadiness() MixReadiness {
+	if scheduler == nil || scheduler.provider == nil || scheduler.sink == nil ||
+		!validPacketSecurity(scheduler.provider.Security()) || !validLinkSecurity(scheduler.sink.Security()) {
+		return MixReadiness{}
+	}
+	return MixReadiness{scheduler: scheduler}
+}
+
+func (readiness MixReadiness) valid() bool {
+	scheduler := readiness.scheduler
+	return scheduler != nil && scheduler.provider != nil && scheduler.sink != nil &&
+		validPacketSecurity(scheduler.provider.Security()) && validLinkSecurity(scheduler.sink.Security())
+}
+
 func validPacketSecurity(security PacketSecurity) bool {
 	return security.Protocol != "" && security.IndependentAudit != "" && security.MinimumMixHops >= 3 &&
 		security.FixedLengthPackets && security.LayeredMixing && security.PerHopAuthentication &&

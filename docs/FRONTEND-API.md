@@ -105,6 +105,15 @@ UI-Frameworks abonnieren ausschließlich Core-Ereignisse. Dadurch können Flutte
 React Native, SwiftUI, Jetpack Compose, Desktop- und CLI-Frontends nebeneinander
 existieren, ohne das Sicherheitsprotokoll zu duplizieren.
 
+`apps/macos` enthält die native SwiftUI-Grenze. `PropagareCoreClient` exportiert
+nur UI-taugliche Operationen und `NetworkSafety`; Schlüssel, Route-Tags,
+Lösch-Capabilities, Rohpakete und ungeprüfte Netzwerkantworten sind in dieser
+Schnittstelle nicht darstellbar. Bis der reale lokale Core-Service vorhanden
+ist, verwendet die App `SafetyLockedCoreClient`. Ein späterer Adapter darf den
+Ein-Node-Bootstrap als sendefähig, aber niemals als metadatenanonym melden. Die
+Hochstufung auf Full Mix und ein persistiertes `RequireFullMix` bleiben
+Core-Entscheidungen, keine frei änderbaren UI-Flags.
+
 ## Bindings
 
 - Android/iOS: nach Stabilisierung der DTOs mit `gomobile bind`.

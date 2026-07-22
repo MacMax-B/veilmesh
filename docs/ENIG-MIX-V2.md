@@ -13,6 +13,28 @@ PQ-hybrider Sphinx-/Onion-Provider, die Courier-/Relay-Laufzeit, Mix-PKI,
 uniforme Downlink-Infrastruktur und reale Relays. Direkter HTTP-Betrieb ist nicht
 anonym; v2 allein begründet keine produktive Metadatenanonymität.
 
+## Bootstrap und automatische Hochstufung
+
+Ein neues Netz kann mit einer verifizierten Node im direkten Bootstrapmodus
+beginnen. Dieser Pfad überträgt weiterhin nur Ende-zu-Ende-verschlüsselte Daten
+über identitätsgepinntes TLS, verbirgt aber weder Client-IP noch Zeitpunkt,
+Häufigkeit oder Datenvolumen vor dieser Node. Er darf nur über das explizite
+`AllowDirectBootstrap` gewählt und in der UI niemals als Mix angezeigt werden.
+
+`mixtransport.SelectOperationalRoute` prüft immer den vollständigen
+Directory-Kandidatensatz. Liegen ein aktuell validierter `Scheduler` und sieben
+verschiedene Identitäten aus sieben unterschiedlichen groben Netzpräfixen vor,
+bevorzugt die Funktion automatisch die Full-Route. Ohne diese Voraussetzungen
+bleibt sie nur bei ausdrücklicher Erlaubnis im Direktmodus. `RequireFullMix`
+scheitert stattdessen mit `ErrFullMixRequired`. Clientadapter müssen dieses
+Mindestniveau geschützt persistieren, sobald der Nutzer es verlangt oder eine
+Produktionsmigration den Bootstrapmodus beendet; so kann eine Eclipse-/Split-
+View das Sicherheitsniveau nicht unbemerkt zurücksetzen.
+
+Die automatische Auswahl erfindet kein Onion-Format. `MixReadiness` kann nur
+von einem Scheduler mit weiterhin gültigen Provider-/Link-Assurances stammen;
+diese Angaben bleiben dennoch eine Integrationssperre und kein Auditbeweis.
+
 ## Einheitliches Full-Node-Modell
 
 Propagare verwendet keine dauerhaft verschiedenen Mix-, Courier- oder

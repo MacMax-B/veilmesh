@@ -176,6 +176,16 @@ unsicheren Fallback. Das Onion-Format selbst bleibt bei einem auditierten,
 PQ-hybriden Provider. Die normative Spezifikation steht in
 [`ENIG-MIX-V2.md`](ENIG-MIX-V2.md).
 
+Ein neues Netz darf mit einer Node beginnen. Dafür ist der Direkt-Bootstrap ein
+eigener, ausdrücklich nicht anonymer Betriebsmodus: Der vollständige
+Directory-Kandidatensatz wird verifiziert und genau eine Node kryptografisch
+zufällig ausgewählt. Sobald ein validierter Scheduler mit auditiert deklariertem
+Paket-/Linkprovider und sieben grob netzdiverse Full Nodes vorliegen, liefert
+`mixtransport.SelectOperationalRoute` automatisch die vollständige Zuweisung.
+`RequireFullMix` unterbindet jeden Rückfall; der aufrufende Client muss dieses
+Mindestniveau nach Nutzerwahl oder erfolgreicher Hochstufung geschützt
+persistieren.
+
 ## Dateien und Bilder
 
 `media.EncryptFile` erzeugt:

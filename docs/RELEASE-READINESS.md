@@ -34,6 +34,10 @@ organisatorisch, nicht durch ein weiteres Versionslabel lösbar.
   gebunden und verlangt atomaren persistenten Replay-Schutz.
 - Parser-, Capability-, Signatur-, Autorisierungs- und Größenänderungen besitzen
   Negativtests.
+- Ein kleines Netz kann ausdrücklich im nicht anonymen Direkt-Bootstrapmodus
+  beginnen. Die automatische Full-Route wird nur bei validiertem Scheduler und
+  sieben diversen Nodes gewählt; `RequireFullMix` verhindert stilles
+  Downgrade. Diese Trennung ist getestet und dokumentiert.
 
 ## Zwingende externe und noch fehlende Gates
 
@@ -55,7 +59,10 @@ Punkte abgeschlossen und nachweisbar sein:
    In-Memory-Vaults sind dafür nicht ausreichend.
 5. Fertige, sicher getestete Endnutzer-Frontends und Plattformadapter für
    Android, iOS und Desktop einschließlich Upgrade-, Backup-, Restore-,
-   Suspend-/Resume- und Barrierefreiheitstests.
+   Suspend-/Resume- und Barrierefreiheitstests. Der native macOS-Branch enthält
+   bereits eine ausführbare, safety-locked SwiftUI-Oberfläche, aber noch keinen
+   produktiven Core-Service-/FFI-Adapter, keine Vault-Integration und keine
+   signierte/notarisierte Distributions-App.
 6. Skalierbarer Node-Speicher, Migrationspfad, Kapazitätsplanung, Last-/Soak-
    Tests, Monitoring ohne sensible Metadaten sowie dokumentierte Notfall- und
    Wiederherstellungsverfahren. Der Referenzstore „eine JSON-Datei pro Item plus

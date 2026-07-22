@@ -129,6 +129,14 @@ weist sieben unterschiedliche Identitäten aus sieben unterschiedlichen groben
 IP-Präfixen drei Mix-, einer Courier- und drei Replikataufgaben zu. Das Directory
 veröffentlicht dabei weiterhin keine dauerhafte Rolle.
 
+Für den Netzstart kann `mixtransport.SelectOperationalRoute` bei ausdrücklichem
+Client-Opt-in eine einzelne vollständig verifizierte Node als nicht anonymen
+Direkt-Bootstrap auswählen. Sobald ein validierter Mix-Scheduler und sieben
+diverse Records verfügbar sind, wird automatisch die Full-Route bevorzugt.
+`RequireFullMix` verhindert einen Rückfall bei fehlenden oder kollabierten
+Directory-Sichten. Diese Entscheidung ist Clientzustand und darf nicht von
+einem Directory-Record vorgegeben werden.
+
 ## Nicht gelöste Angriffe
 
 - Ein kolludierendes Seed-Quorum kann Sybils zulassen.

@@ -1,0 +1,66 @@
+name: macOS client
+
+on:
+  pull_request:
+    paths:
+      - "apps/macos/**"
+      - "mixtransport/**"
+      - ".github/workflows/macos-client.yml"
+  push:
+    branches:
+      - "codex/macos-liquid-glass-client"
+    paths:
+      - "apps/macos/**"
+      - "mixtransport/**"
+      - ".github/workflows/macos-client.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and safety-check
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify adaptive route security
+        run: |
+          go test -count=1 ./mixtransport
+          go test -race -count=1 ./mixtransport
+
+      - name: Lint Swift sources
+        working-directory: apps/macos
+        run: swift format lint --recursive Sources
+
+      - name: Build native client
+        working-directory: apps/macos
+        run: swift build
+
+      - name: Run transport safety checks
+        working-directory: apps/macos
+        run: swift run PropagareSafetyChecks
+
+      - name: Build release configuration
+        working-directory: apps/macos
+        run: swift build --configuration release

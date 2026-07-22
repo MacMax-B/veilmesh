@@ -106,6 +106,7 @@ mixtransport/  ENIG-Mix-v2-Commands und moderater Real/Poll/Cover-Scheduler
 nodedir/       signierte IP-Leases, Seed-Quorum und Snapshot-Reconciliation
 client/        UI-unabhängiger Client-Core, Replikation, Audit und Failover
 cmd/propagare-node/  ausführbarer Referenz-Node
+apps/macos/          native SwiftUI-macOS-App (eigener Client-Branch)
 group/         Admin-/Ban-Zustandsmaschine und MLS-Provider-Grenze
 call/          direkte, hybrid authentisierte WebRTC-DTLS-SRTP-Calls
 media/         gepolsterte, verschlüsselte Datei- und Bildblöcke
@@ -156,6 +157,16 @@ go run ./cmd/propagare-node \
 
 Für ein Quorum sollten mindestens fünf unabhängige Nodes laufen. Der
 Referenzserver sollte nicht direkt ins öffentliche Internet gestellt werden.
+
+Ein neues Testnetz kann technisch mit einer Node beginnen. Der Client-Core kann
+diese nach vollständiger Identitätsprüfung im ausdrücklich aktivierten
+Direkt-Bootstrapmodus verwenden. Nachrichteninhalte bleiben verschlüsselt, aber
+IP, Timing und Häufigkeit sind für diese Node sichtbar. Sobald ein validierter
+ENIG-Mix-Scheduler und mindestens sieben ausreichend netzdiverse Full Nodes
+vorliegen, bevorzugt `mixtransport.SelectOperationalRoute` automatisch drei
+Mix-Hops, einen Courier und drei Replikate. `RequireFullMix` verhindert danach
+einen stillen Rückfall. Die fehlenden auditierten Provider und reale unabhängige
+Infrastruktur bleiben trotzdem Voraussetzung für eine Anonymitätsbehauptung.
 
 Der Standardschlüssel liegt getrennt vom Datenspeicher unter
 `./propagare-secrets/node-key.json`. Ein gebundener Store startet bei fehlendem

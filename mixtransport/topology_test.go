@@ -90,10 +90,136 @@ func TestFullRouteRejectsMissingOrFailingEntropy(t *testing.T) {
 	}
 }
 
+func TestOperationalRouteBootstrapsWithOneVerifiedNode(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	policy, records := fullRouteFixture(t, now, []string{"10.4.0.1"})
+	route, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		MixReadiness{},
+		AllowDirectBootstrap,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Mode != OperationalRouteDirectBootstrap ||
+		route.Bootstrap.Announcement.Identity.NodeID != records[0].Announcement.Identity.NodeID {
+		t.Fatal("one-node network did not select its verified bootstrap node")
+	}
+	before := records[0].Announcement.Identity.Ed25519Public[0]
+	route.Bootstrap.Announcement.Identity.Ed25519Public[0] ^= 1
+	if records[0].Announcement.Identity.Ed25519Public[0] != before {
+		t.Fatal("bootstrap route aliases caller-owned directory identity bytes")
+	}
+}
+
+func TestOperationalRouteAutomaticallyUpgradesAndNeverSilentlyDowngrades(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	policy, records := fullRouteFixture(t, now, []string{
+		"10.5.0.1", "10.5.1.1", "10.5.2.1", "10.5.3.1", "10.5.4.1", "10.5.5.1", "10.5.6.1",
+	})
+	provider := &fakeProvider{security: securePacketSecurity()}
+	scheduler := testScheduler(
+		t,
+		provider,
+		&fakeSink{security: secureLinkSecurity()},
+		4,
+	)
+	route, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		scheduler.RouteReadiness(),
+		AllowDirectBootstrap,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Mode != OperationalRouteFullMix {
+		t.Fatal("mix-ready diverse network did not upgrade to a full route")
+	}
+
+	direct, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		MixReadiness{},
+		AllowDirectBootstrap,
+	)
+	if err != nil || direct.Mode != OperationalRouteDirectBootstrap {
+		t.Fatalf("explicit bootstrap mode returned mode %d and error %v", direct.Mode, err)
+	}
+	if _, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		MixReadiness{},
+		RequireFullMix,
+	); !errors.Is(err, ErrFullMixRequired) {
+		t.Fatalf("mix-required client downgraded with error %v", err)
+	}
+
+	retainedReadiness := scheduler.RouteReadiness()
+	provider.security = PacketSecurity{}
+	if _, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		retainedReadiness,
+		RequireFullMix,
+	); !errors.Is(err, ErrFullMixRequired) {
+		t.Fatalf("stale readiness bypassed changed provider assurance: %v", err)
+	}
+}
+
+func TestOperationalRouteRejectsInvalidCandidatesAndEntropy(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	policy, records := fullRouteFixture(t, now, []string{"10.6.0.1", "10.6.1.1"})
+	tampered := append([]nodedir.Record(nil), records...)
+	tampered[1] = nodedir.CloneRecord(tampered[1])
+	tampered[1].Announcement.Endpoint.Port++
+	if _, err := SelectOperationalRoute(
+		policy,
+		tampered,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		MixReadiness{},
+		AllowDirectBootstrap,
+	); err == nil {
+		t.Fatal("bootstrap route ignored a tampered directory candidate")
+	}
+	if _, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		failingReader{},
+		MixReadiness{},
+		AllowDirectBootstrap,
+	); err == nil {
+		t.Fatal("bootstrap route ignored an entropy failure")
+	}
+	if _, err := SelectOperationalRoute(
+		policy,
+		records,
+		now,
+		bytes.NewReader(make([]byte, 128)),
+		MixReadiness{},
+		RouteRequirement(255),
+	); err == nil {
+		t.Fatal("operational route accepted an unknown requirement")
+	}
+}
+
 func fullRouteFixture(t *testing.T, now time.Time, addresses []string) (nodedir.Policy, []nodedir.Record) {
 	t.Helper()
-	if len(addresses) != fullRouteNodeCount {
-		t.Fatalf("fixture has %d addresses, want %d", len(addresses), fullRouteNodeCount)
+	if len(addresses) == 0 || len(addresses) > nodedir.MaxAttestations {
+		t.Fatalf("fixture has invalid address count %d", len(addresses))
 	}
 	seeds := make([]nodedir.PinnedNode, len(addresses))
 	signers := make([]*pqcrypto.HybridSigner, len(addresses))

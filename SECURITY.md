@@ -108,6 +108,13 @@
   ohne wiederverwendete Node-Identität oder wiederverwendetes IPv4-/24- bzw.
   IPv6-/48-Präfix. Zur Auswahl ist fehlerfrei gelieferte kryptografische
   Zufälligkeit zwingend.
+- `mixtransport.SelectOperationalRoute` hält den Start eines kleinen Netzes
+  davon getrennt: Mit ausdrücklichem `AllowDirectBootstrap` kann eine
+  verifizierte Node verschlüsselten Direktbetrieb anbieten, ohne
+  Metadatenanonymität zu behaupten. Erst ein aktuell validierter Mix-Scheduler
+  plus sieben diverse Full Nodes bewirkt die automatische Hochstufung. Ein
+  persistiertes oder vom Nutzer verlangtes `RequireFullMix` scheitert bei jeder
+  Verkleinerung geschlossen und fällt niemals still auf Direktbetrieb zurück.
 
 ## Kritische noch offene Grenzen
 
@@ -119,6 +126,13 @@ Der direkte Referenztransport verbirgt nicht:
 - Zeitpunkt und Datenmenge einer Übertragung,
 - Korrelation mehrerer gleichzeitiger Replikate,
 - ungefähre Dateigröße anhand der Blockanzahl.
+
+Das gilt ausdrücklich auch für den erlaubten Ein-Node-Bootstrapbetrieb. Er ist
+notwendig, damit ein neues Netz beginnen kann, schützt aber ausschließlich
+Inhalte und authentisierte Fähigkeiten. Die UI muss diesen Zustand sichtbar als
+„Direkt/Metadaten sichtbar“ darstellen. Ein später aktiviertes Mix-Niveau muss
+im geschützten Clientzustand gespeichert werden, damit eine manipulierte kleine
+Directory-Sicht keinen Downgrade auslösen kann.
 
 Rotierende Route-Tags und Padding verhindern dauerhafte Kontokennungen auf der
 Speicherschicht, aber sie besiegen keinen global beobachtenden Gegner. Dafür sind
