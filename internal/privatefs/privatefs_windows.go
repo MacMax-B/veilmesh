@@ -153,43 +153,95 @@ func Validate(path string, info os.FileInfo, kind Kind) error {
 	if err != nil || dacl == nil {
 		return errors.New("private Windows object has an unexpected DACL")
 	}
-	if int(dacl.AceCount) != len(unique) {
-		return fmt.Errorf("private Windows object has %d DACL entries, want %d: %s", dacl.AceCount, len(unique), describeWindowsACL(dacl))
-	}
-	seen := make([]bool, len(unique))
-	expectedFlags := uint8(windows.NO_INHERITANCE)
+	minimumEntries := len(unique)
+	maximumEntries := minimumEntries
 	if kind == Directory {
-		expectedFlags = uint8(windows.OBJECT_INHERIT_ACE | windows.CONTAINER_INHERIT_ACE)
+		// SetEntriesInAcl may canonicalize a directory's generic inheritable
+		// entry into an effective mapped ACE plus an inherit-only generic ACE.
+		// Accept both that representation and a single combined ACE, but no
+		// additional grant, principal, or inheritance form.
+		maximumEntries *= 2
 	}
+	if int(dacl.AceCount) < minimumEntries || int(dacl.AceCount) > maximumEntries {
+		return fmt.Errorf(
+			"private Windows object has %d DACL entries, want between %d and %d: %s",
+			dacl.AceCount,
+			minimumEntries,
+			maximumEntries,
+			describeWindowsACL(dacl),
+		)
+	}
+	type principalAccess struct {
+		effective   bool
+		inheritable bool
+	}
+	seen := make([]principalAccess, len(unique))
 	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, index, &ace); err != nil || ace == nil ||
-			ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Header.AceFlags != expectedFlags ||
-			!fullWindowsFileAccess(ace.Mask) {
+			ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || !fullWindowsFileAccess(ace.Mask) {
 			return errors.New("private Windows DACL contains an unsupported ACE")
+		}
+		if ace.Header.AceFlags&uint8(windows.INHERITED_ACE) != 0 {
+			return errors.New("private Windows DACL contains an inherited ACE")
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
 		if sid == nil || !sid.IsValid() {
 			return errors.New("private Windows DACL contains an invalid SID")
 		}
-		matched := false
-		for principalIndex, allowed := range unique {
-			if sid.Equals(allowed) && !seen[principalIndex] {
-				seen[principalIndex] = true
-				matched = true
+		principalIndex := -1
+		for candidateIndex, allowed := range unique {
+			if sid.Equals(allowed) {
+				principalIndex = candidateIndex
 				break
 			}
 		}
-		if !matched {
-			return errors.New("private Windows DACL grants an untrusted or duplicate principal")
+		if principalIndex < 0 {
+			return errors.New("private Windows DACL grants an untrusted principal")
 		}
+
+		effective, inheritable, valid := windowsACEPermissions(ace.Header.AceFlags, kind)
+		if !valid {
+			return errors.New("private Windows DACL contains unsupported inheritance flags")
+		}
+		if effective && seen[principalIndex].effective {
+			return errors.New("private Windows DACL contains a duplicate effective grant")
+		}
+		if inheritable && seen[principalIndex].inheritable {
+			return errors.New("private Windows DACL contains a duplicate inheritable grant")
+		}
+		seen[principalIndex].effective = seen[principalIndex].effective || effective
+		seen[principalIndex].inheritable = seen[principalIndex].inheritable || inheritable
 	}
-	for _, present := range seen {
-		if !present {
-			return errors.New("private Windows DACL is missing a trusted principal")
+	for _, access := range seen {
+		if !access.effective {
+			return errors.New("private Windows DACL is missing an effective trusted-principal grant")
+		}
+		if kind == Directory && !access.inheritable {
+			return errors.New("private Windows directory DACL is missing an inheritable trusted-principal grant")
 		}
 	}
 	return nil
+}
+
+func windowsACEPermissions(flags uint8, kind Kind) (effective, inheritable, valid bool) {
+	if kind == RegularFile {
+		return flags == uint8(windows.NO_INHERITANCE), false, flags == uint8(windows.NO_INHERITANCE)
+	}
+	if kind != Directory {
+		return false, false, false
+	}
+	inherit := uint8(windows.OBJECT_INHERIT_ACE | windows.CONTAINER_INHERIT_ACE)
+	switch flags {
+	case uint8(windows.NO_INHERITANCE):
+		return true, false, true
+	case inherit:
+		return true, true, true
+	case inherit | uint8(windows.INHERIT_ONLY_ACE):
+		return false, true, true
+	default:
+		return false, false, false
+	}
 }
 
 func describeWindowsACL(dacl *windows.ACL) string {
