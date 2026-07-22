@@ -6,6 +6,23 @@ Alle wesentlichen Änderungen an Propagare werden in dieser Datei dokumentiert.
 
 - Keine Änderungen.
 
+## 0.1.0-preview.2 – 2026-07-22
+
+- Windows-DACL-Prüfung unterstützt die sichere kanonische Aufteilung von
+  effektiven und vererbbaren Zugriffsrechten, ohne fremde, geerbte oder
+  doppelte Grants zuzulassen.
+- Neue Windows-Negativtests prüfen fremde SIDs und unsichere
+  Vererbungsvarianten auf dem echten Windows-CI-Runner.
+- Persistenz- und Schlüssel-Provisionierungstests verhalten sich unter den
+  unterschiedlichen Datei-Locking-Modellen von Windows und Unix deterministisch.
+- In-Prozess-Provisionierung einer neuen Node-Identität ist serialisiert;
+  prozessübergreifende und lebenslange Exklusivität bleibt durch OS-Dateisperren
+  geschützt.
+
+Diese Version bleibt eine Developer-/Security-Preview. Insbesondere sind der
+auditierte Onion-/SURB-Provider und eine unabhängige reale Mixnet-Infrastruktur
+weiterhin nicht enthalten.
+
 ## 0.1.0-preview.1 – 2026-07-22
 
 - Erste reproduzierbar paketierte Security Preview des Propagare-Cores und der
