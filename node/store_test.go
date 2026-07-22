@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/MacMax-B/propagare/client"
+	"github.com/MacMax-B/propagare/internal/privatefs"
 )
 
 func TestDiskStoreChargesEncodedRecordAndFixedOverhead(t *testing.T) {
@@ -98,6 +99,9 @@ func TestDiskStoreCleansAbandonedPrivateTemporary(t *testing.T) {
 	}
 	path := filepath.Join(directory, ".propagare-private-abandoned")
 	if err := os.WriteFile(path, []byte("ciphertext"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := privatefs.Restrict(path, privatefs.RegularFile); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewDiskStore(directory, 1024*1024, 1024*1024)

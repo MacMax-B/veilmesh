@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MacMax-B/propagare/internal/privatefs"
 	"github.com/MacMax-B/propagare/pqcrypto"
 	"github.com/MacMax-B/propagare/protocol"
 )
@@ -78,6 +79,9 @@ func TestEncryptedClientStorePrunesOldestAtConfiguredLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
+		if entry.Name() == localStoreLockFilename {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(directory, entry.Name()))
 		if err != nil {
 			t.Fatal(err)
@@ -356,6 +360,9 @@ func TestEncryptedClientStoreCleansCrashTemporaryAndRejectsUnmanagedFiles(t *tes
 	}
 	temporary := filepath.Join(directory, ".vmc-private-abandoned")
 	if err := os.WriteFile(temporary, []byte("sealed temporary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := privatefs.Restrict(temporary, privatefs.RegularFile); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
