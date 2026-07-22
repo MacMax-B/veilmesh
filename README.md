@@ -236,3 +236,9 @@ und Volumenmetadaten beim Relay.
 
 Vor einem realen Einsatz sind unabhängige Protokoll-, Kryptografie-,
 Metadaten- und Implementierungs-Audits zwingend.
+
+## Lizenz
+
+Dieses Projekt steht unter der [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0). Wer VeilMesh verändert und als Netzwerkdienst betreibt, muss den
+Quelltext der veränderten Version den Nutzern dieses Dienstes zugänglich machen.
