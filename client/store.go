@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -881,10 +882,10 @@ func ensurePrivateDirectory(path string) error {
 	}
 	if errors.Is(initialErr, os.ErrNotExist) || privateDirectoryIsEmpty(path) {
 		if err := privatefs.Restrict(path, privatefs.Directory); err != nil {
-			return errors.New("client store directory permissions could not be restricted")
+			return fmt.Errorf("client store directory permissions could not be restricted: %w", err)
 		}
 	} else if err := privatefs.Validate(path, info, privatefs.Directory); err != nil {
-		return errors.New("client store directory permissions are not private")
+		return fmt.Errorf("client store directory permissions are not private: %w", err)
 	}
 	return nil
 }

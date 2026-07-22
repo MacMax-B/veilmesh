@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -180,10 +181,10 @@ func ensurePrivateKeyDirectory(directory string) error {
 	}
 	if errors.Is(initialErr, os.ErrNotExist) || privateNodeDirectoryIsEmpty(directory) {
 		if err := privatefs.Restrict(directory, privatefs.Directory); err != nil {
-			return errors.New("node signing key parent permissions could not be restricted")
+			return fmt.Errorf("node signing key parent permissions could not be restricted: %w", err)
 		}
 	} else if err := privatefs.ValidateKeyParent(directory, info); err != nil {
-		return errors.New("node signing key parent must not be writable by untrusted principals")
+		return fmt.Errorf("node signing key parent must not be writable by untrusted principals: %w", err)
 	}
 	return nil
 }

@@ -456,7 +456,7 @@ func ensurePrivateStoreDirectory(path string) error {
 	}
 	if errors.Is(initialErr, os.ErrNotExist) || privateNodeDirectoryIsEmpty(path) {
 		if err := privatefs.Restrict(path, privatefs.Directory); err != nil {
-			return errors.New("node store directory permissions could not be restricted")
+			return fmt.Errorf("node store directory permissions could not be restricted: %w", err)
 		}
 	} else if err := privatefs.Validate(path, info, privatefs.Directory); err != nil {
 		return fmt.Errorf("node store directory permissions are not private: %w", err)
