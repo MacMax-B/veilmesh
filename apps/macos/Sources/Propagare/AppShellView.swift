@@ -6,7 +6,7 @@ struct AppShellView: View {
   var body: some View {
     NavigationSplitView {
       SidebarView(model: model)
-        .navigationSplitViewColumnWidth(min: 210, ideal: 236, max: 280)
+        .navigationSplitViewColumnWidth(min: 188, ideal: 208, max: 244)
     } content: {
       switch model.selection {
       case .chats:
@@ -23,6 +23,7 @@ struct AppShellView: View {
       detail
     }
     .navigationSplitViewStyle(.balanced)
+    .background(PropagareDesign.black)
     .task {
       await model.refreshSafety()
     }

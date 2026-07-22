@@ -3,13 +3,6 @@ import SwiftUI
 struct ConversationListView: View {
   let model: AppModel
 
-  private var selectedConversation: Binding<Conversation.ID?> {
-    Binding(
-      get: { model.selectedConversationID },
-      set: { model.selectedConversationID = $0 }
-    )
-  }
-
   private var searchText: Binding<String> {
     Binding(
       get: { model.searchText },
@@ -18,12 +11,28 @@ struct ConversationListView: View {
   }
 
   var body: some View {
-    List(model.filteredConversations, selection: selectedConversation) { conversation in
-      ConversationRow(conversation: conversation, compact: model.compactConversationList)
-        .tag(conversation.id)
+    ScrollView {
+      LazyVStack(spacing: 4) {
+        ForEach(model.filteredConversations) { conversation in
+          let isSelected = model.selectedConversationID == conversation.id
+          Button {
+            model.selectedConversationID = conversation.id
+          } label: {
+            ConversationRow(
+              conversation: conversation,
+              compact: model.compactConversationList,
+              isSelected: isSelected
+            )
+          }
+          .buttonStyle(.plain)
+          .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+      }
+      .padding(8)
     }
+    .background(PropagareDesign.black)
     .searchable(text: searchText, placement: .sidebar, prompt: "Search conversations")
-    .navigationTitle("Chats")
+    .navigationTitle("Messages")
     .toolbar {
       ToolbarItem {
         Button {
@@ -46,13 +55,15 @@ struct ConversationListView: View {
 private struct ConversationRow: View {
   let conversation: Conversation
   let compact: Bool
+  let isSelected: Bool
 
   var body: some View {
     HStack(spacing: 12) {
       AvatarView(
         initials: conversation.initials,
         color: conversation.color,
-        size: compact ? 36 : 44
+        size: compact ? 36 : 44,
+        isInverted: isSelected
       )
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 5) {
@@ -62,28 +73,40 @@ private struct ConversationRow: View {
           if conversation.isVerified {
             Image(systemName: "checkmark.seal.fill")
               .font(.caption)
-              .foregroundStyle(.cyan)
+              .foregroundStyle(isSelected ? PropagareDesign.black : PropagareDesign.white)
               .accessibilityLabel("Verified contact")
           }
           Spacer(minLength: 4)
           if conversation.unreadCount > 0 {
             Text("\(conversation.unreadCount)")
               .font(.caption2.bold())
-              .foregroundStyle(.white)
+              .foregroundStyle(isSelected ? PropagareDesign.white : PropagareDesign.black)
               .padding(.horizontal, 7)
               .padding(.vertical, 3)
-              .background(.blue, in: Capsule())
+              .background(
+                isSelected ? PropagareDesign.black : PropagareDesign.white,
+                in: Capsule()
+              )
               .accessibilityLabel("\(conversation.unreadCount) unread messages")
           }
         }
         if !compact {
           Text(conversation.subtitle)
             .font(.callout)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(
+              isSelected ? PropagareDesign.black.opacity(0.6) : PropagareDesign.muted
+            )
             .lineLimit(2)
         }
       }
     }
-    .padding(.vertical, compact ? 3 : 7)
+    .foregroundStyle(isSelected ? PropagareDesign.black : PropagareDesign.white)
+    .padding(.horizontal, 10)
+    .padding(.vertical, compact ? 7 : 10)
+    .background(
+      isSelected ? PropagareDesign.white : PropagareDesign.black,
+      in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+    )
+    .contentShape(Rectangle())
   }
 }

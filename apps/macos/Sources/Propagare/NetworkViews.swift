@@ -9,13 +9,13 @@ struct NetworkSummaryListView: View {
       Section("Release Gate") {
         if safety.canClaimMetadataAnonymity {
           Label("Full mix active", systemImage: "checkmark.shield.fill")
-            .foregroundStyle(.green)
+            .foregroundStyle(PropagareDesign.white)
         } else if safety.canUseDirectBootstrap {
           Label("Direct bootstrap · metadata visible", systemImage: "exclamationmark.shield.fill")
-            .foregroundStyle(.orange)
+            .foregroundStyle(PropagareDesign.white)
         } else {
           Label("Production transport locked", systemImage: "lock.fill")
-            .foregroundStyle(.orange)
+            .foregroundStyle(PropagareDesign.white)
         }
       }
       Section("Topology") {
@@ -29,6 +29,8 @@ struct NetworkSummaryListView: View {
         GateRow(title: "Sybil resource proof", complete: safety.hasSybilResourceProof)
       }
     }
+    .scrollContentBackground(.hidden)
+    .background(PropagareDesign.black)
     .navigationTitle("Network Safety")
   }
 }
@@ -46,7 +48,7 @@ struct NetworkSafetyView: View {
           HStack(alignment: .top, spacing: 18) {
             Image(systemName: "network.badge.shield.half.filled")
               .font(.system(size: 44, weight: .semibold))
-              .foregroundStyle(.cyan)
+              .foregroundStyle(PropagareDesign.white)
             VStack(alignment: .leading, spacing: 7) {
               Text("Network Safety Gate")
                 .font(.largeTitle.bold())
@@ -54,7 +56,7 @@ struct NetworkSafetyView: View {
                 "Propagare fails closed until the complete metadata-protection path is independently verified."
               )
               .font(.title3)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(PropagareDesign.muted)
             }
           }
 
@@ -88,28 +90,28 @@ struct NetworkSafetyView: View {
           VStack(alignment: .leading, spacing: 10) {
             Label("Why one node is not enough", systemImage: "exclamationmark.shield.fill")
               .font(.headline)
-              .foregroundStyle(.orange)
+              .foregroundStyle(PropagareDesign.white)
             Text(
               "If the same operator observes entry and exit traffic, timing and volume can reveal who communicates with whom. Encryption protects content, not that relationship. The client therefore keeps sending disabled instead of falling back to direct HTTPS."
             )
-            .foregroundStyle(.secondary)
+            .foregroundStyle(PropagareDesign.muted)
             .textSelection(.enabled)
           }
           .padding(18)
-          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          .functionalGlass(cornerRadius: 20)
 
           VStack(alignment: .leading, spacing: 10) {
             Label("Automatic upgrade", systemImage: "arrow.up.forward.circle.fill")
               .font(.headline)
-              .foregroundStyle(.cyan)
+              .foregroundStyle(PropagareDesign.white)
             Text(
               "A test network may send through one verified node in direct bootstrap mode. When the audited scheduler and seven diverse Full Nodes are available, the Core selects the 3-mix + courier + 3-replica route automatically. A stored Full Mix requirement never downgrades."
             )
-            .foregroundStyle(.secondary)
+            .foregroundStyle(PropagareDesign.muted)
             .textSelection(.enabled)
           }
           .padding(18)
-          .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          .functionalGlass(cornerRadius: 20)
         }
         .padding(28)
         .frame(maxWidth: 980)
@@ -126,7 +128,7 @@ private struct GateRow: View {
 
   var body: some View {
     Label(title, systemImage: complete ? "checkmark.circle.fill" : "xmark.circle.fill")
-      .foregroundStyle(complete ? .green : .orange)
+      .foregroundStyle(complete ? PropagareDesign.white : PropagareDesign.muted)
   }
 }
 
@@ -143,19 +145,19 @@ private struct SafetyCard: View {
           .font(.title2)
         Spacer()
         Image(systemName: complete ? "checkmark.circle.fill" : "lock.circle.fill")
-          .foregroundStyle(complete ? .green : .orange)
+          .foregroundStyle(complete ? PropagareDesign.white : PropagareDesign.muted)
       }
       Text(title)
         .font(.headline)
       Text(value)
         .font(.title3.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(PropagareDesign.muted)
     }
     .padding(18)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .functionalGlass(cornerRadius: 20)
     .overlay {
       RoundedRectangle(cornerRadius: 20, style: .continuous)
-        .stroke(.white.opacity(0.1), lineWidth: 1)
+        .stroke(PropagareDesign.line, lineWidth: 1)
     }
   }
 }

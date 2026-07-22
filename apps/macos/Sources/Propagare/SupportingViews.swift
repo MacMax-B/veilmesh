@@ -14,6 +14,8 @@ struct ContactsView: View {
         .foregroundStyle(.secondary)
       }
     }
+    .scrollContentBackground(.hidden)
+    .background(PropagareDesign.black)
     .navigationTitle("Contacts")
   }
 }
@@ -63,5 +65,6 @@ struct SettingsView: View {
       .tabItem { Label("Security", systemImage: "lock.shield") }
     }
     .padding(12)
+    .preferredColorScheme(.dark)
   }
 }

@@ -12,6 +12,9 @@ Alle wesentlichen Änderungen an Propagare werden in dieser Datei dokumentiert.
 - Native macOS-SwiftUI-App auf dem separaten Client-Branch mit Liquid-Glass-
   Gestaltung, Netzwerk-Sicherheitsdashboard, deutscher/englischer
   Lokalisierung und fail-closed Core-Grenze.
+- Monochromes macOS-Messenger-Design mit nativer linker Glass-Navigation,
+  minimalistischem `#000000`/`#FFFFFF`-Chat und akzentfarbfreier
+  Sicherheitskennzeichnung.
 
 ## 0.1.0-preview.2 – 2026-07-22
 

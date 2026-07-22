@@ -84,24 +84,35 @@ struct ConversationDetailView: View {
   }
 
   private var safetyBanner: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "shield.lefthalf.filled.trianglebadge.exclamationmark")
-        .font(.title3)
-        .foregroundStyle(.orange)
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Metadata protection is not active")
-          .font(.callout.weight(.semibold))
-        Text("A single direct node cannot hide who communicates with whom.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+    HStack(spacing: 10) {
+      Image(systemName: "lock.fill")
+        .font(.caption)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("DIRECT · METADATA VISIBLE")
+          .font(.caption2.weight(.semibold))
+          .tracking(0.7)
+        Text("One node protects content, not communication relationships.")
+          .font(.caption2)
+          .foregroundStyle(PropagareDesign.muted)
       }
       Spacer()
-      Button("Review") {
+      Button {
         model.selection = .network
+      } label: {
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.semibold))
       }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Review Network Safety")
     }
-    .padding(14)
-    .functionalGlass(cornerRadius: 18)
+    .foregroundStyle(PropagareDesign.white)
+    .padding(.horizontal, 14)
+    .frame(height: 46)
+    .background(PropagareDesign.subtle, in: RoundedRectangle(cornerRadius: 15))
+    .overlay {
+      RoundedRectangle(cornerRadius: 15)
+        .stroke(PropagareDesign.line, lineWidth: 1)
+    }
     .accessibilityElement(children: .combine)
   }
 
@@ -118,6 +129,7 @@ struct ConversationDetailView: View {
 
       TextField("Write a message", text: draft, axis: .vertical)
         .textFieldStyle(.plain)
+        .foregroundStyle(PropagareDesign.white)
         .lineLimit(1...6)
         .padding(.horizontal, 6)
         .onSubmit {
@@ -138,6 +150,10 @@ struct ConversationDetailView: View {
     }
     .padding(12)
     .functionalGlass(cornerRadius: 22)
+    .overlay {
+      RoundedRectangle(cornerRadius: 22, style: .continuous)
+        .stroke(PropagareDesign.line, lineWidth: 1)
+    }
     .frame(maxWidth: 860)
   }
 }
@@ -151,10 +167,10 @@ private struct MessageBubble: View {
       if message.direction == .system {
         Text(message.body)
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(PropagareDesign.muted)
           .padding(.horizontal, 12)
           .padding(.vertical, 7)
-          .background(.black.opacity(0.18), in: Capsule())
+          .background(PropagareDesign.subtle, in: Capsule())
       } else {
         VStack(alignment: .leading, spacing: 7) {
           Text(message.body)
@@ -166,14 +182,26 @@ private struct MessageBubble: View {
             }
           }
           .font(.caption2)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(
+            message.direction == .outgoing
+              ? PropagareDesign.black.opacity(0.58) : PropagareDesign.muted
+          )
         }
+        .foregroundStyle(
+          message.direction == .outgoing ? PropagareDesign.black : PropagareDesign.white
+        )
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
-          message.direction == .outgoing ? Color.blue.opacity(0.75) : Color.white.opacity(0.12),
+          message.direction == .outgoing ? PropagareDesign.white : PropagareDesign.subtle,
           in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
+        .overlay {
+          if message.direction == .incoming {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+              .stroke(PropagareDesign.line, lineWidth: 1)
+          }
+        }
       }
       if message.direction == .incoming { Spacer(minLength: 110) }
     }
@@ -186,7 +214,7 @@ private struct ConversationInspector: View {
   let safety: NetworkSafety
 
   var body: some View {
-    Form {
+    ScrollView {
       VStack(spacing: 10) {
         AvatarView(initials: conversation.initials, color: conversation.color, size: 72)
         Text(conversation.title)
@@ -196,20 +224,66 @@ private struct ConversationInspector: View {
           systemImage: conversation.isVerified
             ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
         )
-        .foregroundStyle(conversation.isVerified ? .cyan : .orange)
+        .foregroundStyle(PropagareDesign.white)
       }
       .frame(maxWidth: .infinity)
-      .padding(.vertical)
+      .padding(.vertical, 24)
 
-      Section("Transport") {
-        LabeledContent("Connected nodes", value: "\(safety.connectedNodes)")
-        LabeledContent("Independent operators", value: "\(safety.independentOperators)")
-        LabeledContent(
-          "Direct bootstrap", value: safety.canUseDirectBootstrap ? "Active" : "Inactive")
-        LabeledContent(
-          "Metadata anonymity", value: safety.canClaimMetadataAnonymity ? "Active" : "Locked")
+      VStack(alignment: .leading, spacing: 0) {
+        Text("TRANSPORT")
+          .font(.caption2.weight(.semibold))
+          .tracking(0.7)
+          .foregroundStyle(PropagareDesign.muted)
+          .padding(.bottom, 10)
+
+        InspectorMetric(title: "Connected nodes", value: "\(safety.connectedNodes)")
+        InspectorMetric(
+          title: "Independent operators",
+          value: "\(safety.independentOperators)"
+        )
+        InspectorMetric(
+          title: "Direct bootstrap",
+          value: safety.canUseDirectBootstrap ? "Active" : "Inactive"
+        )
+        InspectorMetric(
+          title: "Metadata anonymity",
+          value: safety.canClaimMetadataAnonymity ? "Active" : "Locked",
+          drawsDivider: false
+        )
+      }
+      .padding(16)
+      .background(PropagareDesign.subtle, in: RoundedRectangle(cornerRadius: 18))
+      .overlay {
+        RoundedRectangle(cornerRadius: 18)
+          .stroke(PropagareDesign.line, lineWidth: 1)
       }
     }
-    .formStyle(.grouped)
+    .padding(14)
+    .foregroundStyle(PropagareDesign.white)
+    .background(PropagareDesign.black)
+  }
+}
+
+private struct InspectorMetric: View {
+  let title: LocalizedStringKey
+  let value: String
+  var drawsDivider = true
+
+  var body: some View {
+    HStack {
+      Text(title)
+      Spacer()
+      Text(value)
+        .foregroundStyle(PropagareDesign.muted)
+    }
+    .font(.callout)
+    .padding(.vertical, 11)
+    .overlay(alignment: .bottom) {
+      if drawsDivider {
+        Rectangle()
+          .fill(PropagareDesign.line)
+          .frame(height: 1)
+      }
+    }
   }
 }

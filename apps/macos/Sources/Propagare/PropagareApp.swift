@@ -10,8 +10,11 @@ struct PropagareApp: App {
     WindowGroup {
       AppShellView(model: model)
         .frame(minWidth: 940, minHeight: 620)
+        .preferredColorScheme(.dark)
+        .tint(PropagareDesign.white)
     }
     .defaultSize(width: 1_240, height: 780)
+    .windowToolbarStyle(.unifiedCompact)
     .commands {
       CommandGroup(after: .sidebar) {
         Button("Show Network Safety") {
@@ -24,6 +27,8 @@ struct PropagareApp: App {
     Settings {
       SettingsView(model: model)
         .frame(width: 560, height: 420)
+        .preferredColorScheme(.dark)
+        .tint(PropagareDesign.white)
     }
   }
 }

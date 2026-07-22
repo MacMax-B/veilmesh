@@ -1,19 +1,15 @@
 import SwiftUI
 
 enum PropagareDesign {
-  static let contentCornerRadius: CGFloat = 22
-  static let compactCornerRadius: CGFloat = 14
+  static let black = Color(red: 0, green: 0, blue: 0)
+  static let white = Color(red: 1, green: 1, blue: 1)
+  static let muted = white.opacity(0.58)
+  static let subtle = white.opacity(0.08)
+  static let line = white.opacity(0.14)
+  static let contentCornerRadius: CGFloat = 24
+  static let compactCornerRadius: CGFloat = 16
   static let contentPadding: CGFloat = 18
-
-  static let backdrop = LinearGradient(
-    colors: [
-      Color(red: 0.035, green: 0.055, blue: 0.11),
-      Color(red: 0.055, green: 0.13, blue: 0.19),
-      Color(red: 0.13, green: 0.075, blue: 0.22),
-    ],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-  )
+  static let backdrop = black
 }
 
 private struct FunctionalGlassModifier: ViewModifier {
@@ -23,15 +19,19 @@ private struct FunctionalGlassModifier: ViewModifier {
   func body(content: Content) -> some View {
     if #available(macOS 26.0, *) {
       content
-        .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        .glassEffect(
+          .regular.tint(PropagareDesign.white.opacity(0.035)),
+          in: .rect(cornerRadius: cornerRadius)
+        )
     } else {
       content
         .background(
-          .ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          PropagareDesign.black.opacity(0.74),
+          in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
         .overlay {
           RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(.white.opacity(0.12), lineWidth: 1)
+            .stroke(PropagareDesign.line, lineWidth: 1)
         }
     }
   }
@@ -41,9 +41,15 @@ private struct ProminentGlassButtonModifier: ViewModifier {
   @ViewBuilder
   func body(content: Content) -> some View {
     if #available(macOS 26.0, *) {
-      content.buttonStyle(.glassProminent)
+      content
+        .buttonStyle(.glassProminent)
+        .tint(PropagareDesign.white)
+        .foregroundStyle(PropagareDesign.black)
     } else {
-      content.buttonStyle(.borderedProminent)
+      content
+        .buttonStyle(.borderedProminent)
+        .tint(PropagareDesign.white)
+        .foregroundStyle(PropagareDesign.black)
     }
   }
 }
@@ -62,22 +68,22 @@ struct AvatarView: View {
   let initials: String
   let color: AccentColor
   var size: CGFloat = 42
+  var isInverted = false
 
   var body: some View {
     ZStack {
       Circle()
         .fill(
-          LinearGradient(
-            colors: [color.color.opacity(0.95), color.color.opacity(0.48)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
+          isInverted ? PropagareDesign.black.opacity(0.08) : PropagareDesign.subtle
         )
       Circle()
-        .strokeBorder(.white.opacity(0.28), lineWidth: 1)
+        .strokeBorder(
+          isInverted ? PropagareDesign.black.opacity(0.18) : PropagareDesign.line,
+          lineWidth: 1
+        )
       Text(initials)
-        .font(.system(size: size * 0.31, weight: .bold, design: .rounded))
-        .foregroundStyle(.white)
+        .font(.system(size: size * 0.3, weight: .semibold, design: .rounded))
+        .foregroundStyle(isInverted ? PropagareDesign.black : PropagareDesign.white)
     }
     .frame(width: size, height: size)
     .accessibilityLabel(Text("Avatar \(initials)"))
