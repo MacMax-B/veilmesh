@@ -22,7 +22,9 @@
   Anwendungsseitige Ablaufzeiten reisen ausschließlich Ende-zu-Ende-
   verschlüsselt in der Nachricht selbst.
 - Fetch-Antworten sind pro Node und über alle Replikate gemeinsam auf Itemzahl
-  und Bytes begrenzt. Große Dateien werden in begrenzten Fetch-Batches geladen.
+  und Bytes begrenzt. Die globale Sicht wird deterministisch und Node-fair
+  zusammengeführt, damit ein budgetfüllender Replikat-Reply andere Nodes nicht
+  verdrängt. Große Dateien werden in begrenzten Fetch-Batches geladen.
 - Produktive Client↔Node- und Node↔Node-Verbindungen verwenden ausschließlich
   TLS 1.3 mit dem hybriden `X25519MLKEM768`-Schlüsselaustausch. Die Node erzeugt
   den selbstsignierten Zertifikatscontainer automatisch aus ihrem persistenten
@@ -44,7 +46,31 @@
   enthalten nur einen domänenseparierten Hash der Datensatz-ID. Der
   Verschlüsselungsschlüssel wird nicht neben dem Store gespeichert. Ein
   plattformgebundener exklusiver Dateilock verhindert parallele Store-Instanzen;
-  abgebrochene temporäre Writes werden beim Neustart entfernt.
+  abgebrochene temporäre Writes werden erst nach einer vollständig erfolgreichen
+  Startup-Prüfung entfernt. Ein ausstehender Verzeichnis-Durability-Status wird
+  vor idempotentem Erfolg und bei jedem Neustart durch erneutes `fsync`
+  wiederhergestellt.
+- Vor dem ersten externen Store-Request persistiert der Client Lösch-Capability,
+  vollständige Node-Identitäten und alle möglichen Ziel-Nodes. Empfangene
+  Speicherbelege werden einzeln authentifiziert und sofort ergänzt. Dadurch
+  bleiben auch verlorene Antworten, Abstürze mit null Belegen, Directory-
+  Mitgliedschaftswechsel sowie spätere Audit-/Delete-Retries rekonstruierbar.
+- Geräte-Sync-Ereignisse binden Sender, aktuelles signiertes Profil, exakte
+  Profilrevision, Lebenszeit und Payload hybrid signiert. Nur aktive Geräte
+  zählen; die produktive Öffnung verlangt einen atomaren persistenten
+  Replay-Store. Profile sind auf 27 Geräte und 256 KiB Encoding begrenzt.
+- Node-Datenverzeichnisse sind dauerhaft an genau eine hybrid signierte
+  Node-Identität gebunden. Löschungen hinterlassen capability-gebundene
+  Tombstones bis zum ursprünglichen Ablauf, sodass ein Retry nach Neustart kein
+  bereits gelöschtes Item wieder als vorhanden behandelt. Schlüssel- und
+  Store-Locks verhindern parallelen Betrieb derselben Identität oder desselben
+  RAM-Indexes.
+- Auf Unix werden Typ, effektiver Besitzer und owner-only Modi geprüft; der
+  Betrieb setzt zusätzlich voraus, dass keine erweiterten ACLs anderen
+  Principals Zugriff gewähren. Auf Windows verwendet der Core geschützte DACLs
+  für den Dienstnutzer, LocalSystem und Administratoren sowie
+  `MoveFileEx(...WRITE_THROUGH)` für kritische Publikationen. Reale macOS- und
+  Windows-Persistenztests sind Teil der CI.
 - Node-Quoten rechnen die persistierte Kodierung plus festen Dateisystem-/Index-
   Overhead, nicht nur Ciphertext-Nutzbytes. Die globale gleichzeitige
   Request-Arbeit ist hart begrenzt; auch ein Node-Datenverzeichnis besitzt
@@ -77,6 +103,11 @@
   Attestierungen. Ein Seed prüft Quellen-IP und einen signierten Rückruf-Challenge,
   bevor es attestiert. Snapshots sind vollständig signiert, sortiert und auf 512
   aktive Nodes begrenzt; abgelaufene Leases werden lokal entfernt.
+- Die Full-Node-Routenzuweisung verifiziert den vollständigen Kandidatensatz und
+  verwendet pro Speichervorgang drei Mix-Hops, einen Courier und drei Replikate
+  ohne wiederverwendete Node-Identität oder wiederverwendetes IPv4-/24- bzw.
+  IPv6-/48-Präfix. Zur Auswahl ist fehlerfrei gelieferte kryptografische
+  Zufälligkeit zwingend.
 
 ## Kritische noch offene Grenzen
 
@@ -141,6 +172,12 @@ verhindern beliebige Dritt-IP-Einträge, lösen aber keine gemeinsame-NAT- oder
 Betreiberidentität. Leases entfernen offline gegangene Nodes erst nach Ablauf;
 Nichterreichbarkeit allein wird bewusst nicht als öffentlich beweisbares
 Fehlverhalten behandelt. Details: [`docs/NODE-DIRECTORY-V1.md`](docs/NODE-DIRECTORY-V1.md).
+
+Alle Nodes sollen langfristig dieselbe Full-Node-Software und dieselben
+Fähigkeiten besitzen. Die bestehende Rückruf-Challenge beweist derzeit aber nur
+Identitätsbesitz und Erreichbarkeit, nicht funktionierende Mix-, Courier- und
+SURB-Verarbeitung. Auch unterschiedliche IP-Präfixe beweisen keine unabhängigen
+Betreiber. Beides bleibt vor einer produktiven Aktivierung separat zu prüfen.
 
 ### 1:1-Kryptografie
 
@@ -222,6 +259,12 @@ und ein Audit der Plattform-Medienadapter Pflicht.
 Es verschlüsselt keine Gruppeninhalte. Jede erfolgreiche Zustandsänderung muss
 atomar mit einem MLS-Proposal und MLS-Commit verbunden werden.
 
+Wiederhergestellte Gruppenstatus sind auf 8 MiB begrenzt, lehnen unbekannte
+Felder und nachgestellte JSON-Werte ab und werden vor Verwendung vollständig
+gegen selbstzertifizierende Gruppen-ID, Mitgliederrollen und Zustands-Hash
+geprüft. Der nicht serialisierte Concurrency-Guard wird beim Restore neu
+initialisiert.
+
 Der Owner-Schlüssel ist ein Administrations-Signaturschlüssel, kein universeller
 Entschlüsselungsschlüssel. Ein Master-Entschlüsselungsschlüssel würde Forward
 Secrecy und den Schutz gebannter Mitglieder zerstören.
@@ -264,6 +307,13 @@ Replikationsbelege und Reparaturzustand persistiert und nach einem Neustart
 erneut authentifiziert. Weitere Zustandsarten müssen über dieselbe Schnittstelle
 mit expliziter Prune-Richtlinie integriert werden.
 
+Der Referenz-Node persistiert capability-gebundene Lösch-Tombstones und eine
+signierte Store↔Identitätsbindung. Fehlgeschlagene Directory-Synchronisation
+bleibt ein geschlossener Fehler und wird beim nächsten Start wiederholt. Für
+Unix-Produktionshosts müssen Deployment und Audit zusätzlich sicherstellen,
+dass das gewählte Dateisystem keine unerwarteten erweiterten ACLs, Netzwerk-
+Dateisystemsemantiken oder nicht dauerhafte Rename/`fsync`-Garantien einführt.
+
 Eine signierte Löschbestätigung beweist nur, dass die Node behauptet zu löschen.
 Sie kann nicht beweisen, dass keine heimliche Kopie existiert. Ende-zu-Ende-
 Verschlüsselung und zeitnahe Schlüsselvernichtung bleiben deshalb entscheidend.
@@ -285,4 +335,4 @@ Verschlüsselung und zeitnahe Schlüsselvernichtung bleiben deshalb entscheidend
 Das explizite Angreifer- und Vertrauensmodell steht in
 [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md).
 Der letzte interne Prüfbericht steht in
-[`docs/SECURITY-REVIEW-2026-07-21.md`](docs/SECURITY-REVIEW-2026-07-21.md).
+[`docs/SECURITY-REVIEW-2026-07-22.md`](docs/SECURITY-REVIEW-2026-07-22.md).

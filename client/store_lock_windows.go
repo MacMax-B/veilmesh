@@ -21,3 +21,10 @@ func unlockClientStoreFile(file *os.File) error {
 	var overlapped windows.Overlapped
 	return windows.UnlockFileEx(windows.Handle(file.Fd()), 0, 1, 0, &overlapped)
 }
+
+func syncClientDirectory(directory string) error {
+	// Critical record replacements use MoveFileEx(MOVEFILE_WRITE_THROUGH).
+	// Windows exposes no documented directory-fsync primitive; cache/expired
+	// record removals are revalidated and may safely be repeated after restart.
+	return nil
+}

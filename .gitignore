@@ -1,6 +1,12 @@
 /local/
+/dist/
 /propagare-data/
 /propagare-node-key.json
+/propagare-secrets/
+.propagare-private-*
+**/.propagare-private-*
+.propagare-key-*.lock
+**/.propagare-key-*.lock
 *.tmp
 *.log
 .DS_Store

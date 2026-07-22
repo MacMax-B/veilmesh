@@ -10,9 +10,9 @@ import (
 	"sort"
 	"time"
 
-	"propagare/identity"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (
@@ -62,7 +62,17 @@ func SignPublicProfile(accountSigner *pqcrypto.HybridSigner, revision uint64, up
 		return PublicProfile{}, err
 	}
 	profile.Signature, err = accountSigner.Sign("account-public-profile", message)
-	return profile, err
+	if err != nil {
+		return PublicProfile{}, err
+	}
+	encoded, err := json.Marshal(profile)
+	if err != nil {
+		return PublicProfile{}, err
+	}
+	if len(encoded) == 0 || len(encoded) > MaxPublicProfileBytes {
+		return PublicProfile{}, errors.New("public profile exceeds wire size limit")
+	}
+	return profile, nil
 }
 
 func validateProfileStructure(profile PublicProfile, now time.Time) error {
@@ -74,11 +84,17 @@ func validateProfileStructure(profile PublicProfile, now time.Time) error {
 		return errors.New("invalid public profile")
 	}
 	previous := ""
+	seenHPKEKeys := make(map[string]struct{}, len(profile.Devices))
 	for _, certificate := range profile.Devices {
 		deviceID := certificate.Device.DeviceID
 		if deviceID <= previous || !VerifyDevice(profile.AccountPublic, certificate) {
 			return errors.New("invalid or unsorted device certificate")
 		}
+		hpkeKey := string(certificate.Device.HPKEPublicKey)
+		if _, duplicate := seenHPKEKeys[hpkeKey]; duplicate {
+			return errors.New("duplicate device HPKE public key")
+		}
+		seenHPKEKeys[hpkeKey] = struct{}{}
 		previous = deviceID
 	}
 	return nil
@@ -91,6 +107,10 @@ func VerifyPublicProfile(profile PublicProfile, now time.Time) error {
 	message, err := profileSigningBytes(profile)
 	if err != nil || !pqcrypto.Verify(profile.AccountPublic, "account-public-profile", message, profile.Signature) {
 		return errors.New("invalid public profile signature")
+	}
+	encoded, err := json.Marshal(profile)
+	if err != nil || len(encoded) == 0 || len(encoded) > MaxPublicProfileBytes {
+		return errors.New("public profile size is out of range")
 	}
 	return nil
 }

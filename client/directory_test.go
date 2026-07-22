@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"propagare/nodedir"
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/nodedir"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 type directoryRoundTrip func(*http.Request) (*http.Response, error)
@@ -44,14 +44,34 @@ func TestClientReconcilesMultiplePinnedDirectoryViews(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
 	})}
-	records, err := FetchNodeDirectory(context.Background(), DirectoryBootstrap{
+	directory, err := FetchNodeDirectory(context.Background(), DirectoryBootstrap{
 		Seeds: seeds, AuthorityQuorum: 2, MinSeedResponses: 2, AllowPrivateIPs: true, MaxNodes: 16,
 	}, httpClient, now)
 	if err != nil {
 		t.Fatal(err)
 	}
+	records := directory.Records()
 	if len(records) != 1 || records[0].Announcement.Identity.NodeID != member.PublicIdentity().NodeID {
 		t.Fatal("client did not obtain the complete admitted node view")
+	}
+	records[0].Announcement.Identity.Ed25519Public[0] ^= 1
+	identityBody, _ := json.Marshal(member.PublicIdentity())
+	encoded["10.2.0.3:8787"] = identityBody
+	if _, err := ConnectDirectoryRecords(context.Background(), directory, 1, httpClient); err == nil {
+		t.Fatal("production directory connection implicitly downgraded to plain HTTP")
+	}
+	nodes, err := ConnectDirectoryRecordsForDevelopment(context.Background(), directory, 1, httpClient)
+	if err != nil || len(nodes) != 1 || nodes[0].Identity().NodeID != member.PublicIdentity().NodeID {
+		t.Fatalf("defensive directory copy changed trusted connection state: nodes=%d err=%v", len(nodes), err)
+	}
+	if _, err := ConnectDirectoryRecords(context.Background(), VerifiedDirectory{}, 1, httpClient); err == nil {
+		t.Fatal("manually constructed empty directory handle was accepted")
+	}
+	tampered := directory
+	tampered.records = cloneDirectoryRecords(directory.records)
+	tampered.records[0].Announcement.ExpiresAt = time.Now().Add(-time.Minute)
+	if _, err := ConnectDirectoryRecordsForDevelopment(context.Background(), tampered, 1, httpClient); err == nil {
+		t.Fatal("directory record was not reverified immediately before dialing")
 	}
 	delete(encoded, "10.2.0.2:8787")
 	if _, err := FetchNodeDirectory(context.Background(), DirectoryBootstrap{

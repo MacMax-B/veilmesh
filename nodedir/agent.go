@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
-	"propagare/transportauth"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
+	"github.com/MacMax-B/propagare/transportauth"
 )
 
 type ReachabilityProber interface {
@@ -197,20 +197,44 @@ func (agent *Agent) SyncOnce(ctx context.Context, now time.Time) error {
 }
 
 func (agent *Agent) Run(ctx context.Context, interval time.Duration) error {
-	if interval < time.Minute || interval > MaxLease/2 {
-		return errors.New("invalid node directory synchronization interval")
+	if agent == nil || ctx == nil {
+		return errors.New("node directory synchronization is unavailable")
 	}
-	if err := agent.SyncOnce(ctx, time.Now().UTC()); err != nil && ctx.Err() != nil {
-		return ctx.Err()
+	if interval < time.Minute || interval > agent.lease/2 {
+		return errors.New("invalid node directory synchronization interval")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	return agent.run(ctx, time.Now().UTC(), ticker.C)
+}
+
+func (agent *Agent) run(ctx context.Context, initial time.Time, ticks <-chan time.Time) error {
+	syncAt := func(now time.Time) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := agent.SyncOnce(ctx, now); err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return contextErr
+			}
+			return err
+		}
+		return nil
+	}
+	if err := syncAt(initial); err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case now := <-ticker.C:
-			_ = agent.SyncOnce(ctx, now.UTC())
+		case now, open := <-ticks:
+			if !open {
+				return errors.New("node directory synchronization clock stopped")
+			}
+			if err := syncAt(now.UTC()); err != nil {
+				return err
+			}
 		}
 	}
 }

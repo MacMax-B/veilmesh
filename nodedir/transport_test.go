@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"propagare/transportauth"
+	"github.com/MacMax-B/propagare/transportauth"
 )
 
 func TestDirectoryHTTPSPinsPublisherAndChallengeIdentity(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 const testAudioSDP = "v=0\r\n" +

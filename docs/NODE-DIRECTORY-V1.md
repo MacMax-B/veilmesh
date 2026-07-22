@@ -13,6 +13,15 @@ Schlüssel sind Deploymentdaten und wurden mangels realer
 Betreiber absichtlich nicht erfunden. Das Verzeichnis ist keine Anonymitätsschicht
 und noch keine permissionless Sybil-Abwehr.
 
+Das Zielnetz besitzt nur einen Node-Softwaretyp: Jeder gültige Record soll eine
+Full Node beschreiben, die Mix-, Courier-, Speicher-, Directory- und
+Bootstrap-Aufgaben ausführen kann. Rollen sind daher keine selbstdeklarierte
+Eigenschaft im Record, sondern eine kurzlebige Zuweisung des Clients pro Route.
+Der aktuelle v1-Rückruf beweist Erreichbarkeit und Identitätsbesitz, aber noch
+nicht die Konformität aller fehlenden Full-Node-Dienste. Bis ein standardisierter
+Conformance-Probe-Pfad vorhanden ist, darf die Aufnahme nicht als solcher Beweis
+beworben werden.
+
 ## Vertrauensanker
 
 Ein `PinnedNode` enthält:
@@ -106,11 +115,19 @@ spätestens einigen Synchronisationsintervallen alle ehrlichen Nodes. Clients
 verwenden `client.FetchNodeDirectory`, verlangen eine konfigurierte Mindestzahl
 erfolgreicher Seed-Sichten und bilden deren verifizierte Union. Die vollständige
 Liste kann lokal gehalten werden; `client.ConnectDirectoryRecords` begrenzt die
-gleichzeitig kontaktierten Speicher-Nodes separat auf 64.
+gleichzeitig kontaktierten Speicher-Nodes separat auf 64 und akzeptiert
+produktiv ausschließlich öffentlich routbares `https`. Die getrennte API
+`client.ConnectDirectoryRecordsForDevelopment` erlaubt private/Loopback-
+Endpunkte nur nach ausdrücklichem Entwicklungs-Opt-in; der Produktionspfad
+downgradet niemals anhand einer privaten Directory-Policy auf `http`.
 
 Snapshots enthalten ausschließlich öffentliche Node-Identitäten und
 IP-Endpunkte. Kontakte, Account-/Geräte-IDs, Route-Tags, Capabilities, Payloads
 und Fetch-Listen sind verboten und werden von diesem Datentyp nicht dargestellt.
+Für ENIG-Mix-Routen prüft `mixtransport.SelectFullRoute` jeden Record erneut und
+weist sieben unterschiedliche Identitäten aus sieben unterschiedlichen groben
+IP-Präfixen drei Mix-, einer Courier- und drei Replikataufgaben zu. Das Directory
+veröffentlicht dabei weiterhin keine dauerhafte Rolle.
 
 ## Nicht gelöste Angriffe
 

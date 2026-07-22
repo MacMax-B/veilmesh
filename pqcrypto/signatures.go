@@ -7,13 +7,17 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"strings"
 
 	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
-const signatureContext = "enig-v1"
+const (
+	signatureContext        = "enig-v1"
+	MaxSignatureDomainBytes = 128
+)
 
 type HybridSigner struct {
 	edPrivate ed25519.PrivateKey
@@ -101,7 +105,14 @@ func domainMessage(domain string, message []byte) []byte {
 	return h.Sum(nil)
 }
 
+func validSignatureDomain(domain string) bool {
+	return len(domain) > 0 && len(domain) <= MaxSignatureDomainBytes && strings.IndexByte(domain, 0) < 0
+}
+
 func (s *HybridSigner) Sign(domain string, message []byte) (protocol.HybridSignature, error) {
+	if !validSignatureDomain(domain) {
+		return protocol.HybridSignature{}, errors.New("invalid signature domain")
+	}
 	digest := domainMessage(domain, message)
 	pqSignature := make([]byte, mldsa65.SignatureSize)
 	if err := mldsa65.SignTo(s.pqPrivate, digest, []byte(signatureContext), true, pqSignature); err != nil {
@@ -114,7 +125,7 @@ func (s *HybridSigner) Sign(domain string, message []byte) (protocol.HybridSigna
 }
 
 func Verify(identity protocol.NodePublicIdentity, domain string, message []byte, signature protocol.HybridSignature) bool {
-	if !ValidPublicIdentity(identity) || len(signature.Ed25519) != ed25519.SignatureSize ||
+	if !validSignatureDomain(domain) || !ValidPublicIdentity(identity) || len(signature.Ed25519) != ed25519.SignatureSize ||
 		len(signature.MLDSA65) != mldsa65.SignatureSize {
 		return false
 	}

@@ -11,11 +11,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
-	"propagare/client"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/client"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type FileSecret struct {
@@ -59,10 +59,7 @@ func EncryptFile(name, mediaType string, plaintext []byte, maxBytes, chunkSize i
 	if len(plaintext) == 0 || len(plaintext) > maxBytes {
 		return EncryptedFile{}, errors.New("file size is outside configured limits")
 	}
-	baseName := filepath.Base(name)
-	if baseName == "." || baseName == "" || len(baseName) > MaxFileNameBytes ||
-		len(mediaType) == 0 || len(mediaType) > MaxMediaTypeBytes ||
-		strings.ContainsAny(baseName+mediaType, "\x00\r\n") {
+	if !validPortableFileName(name) || !validMediaType(mediaType) {
 		return EncryptedFile{}, errors.New("invalid file metadata")
 	}
 	if chunkSize < 16*1024 || chunkSize > protocol.DefaultMaxItemBytes-1024 {
@@ -90,7 +87,7 @@ func EncryptFile(name, mediaType string, plaintext []byte, maxBytes, chunkSize i
 		Manifest: protocol.FileManifest{
 			Version:        protocol.ProtocolVersion,
 			FileID:         fileID,
-			Name:           baseName,
+			Name:           name,
 			MediaType:      mediaType,
 			PlaintextBytes: int64(len(plaintext)),
 			ChunkSize:      chunkSize,
@@ -194,14 +191,27 @@ func Store(ctx context.Context, core *client.Core, encrypted EncryptedFile) ([]c
 	if len(encrypted.Chunks) != len(encrypted.Manifest.Chunks) {
 		return nil, errors.New("encrypted chunks do not match manifest")
 	}
-	deliveries := make([]client.Delivery, 0, len(encrypted.Chunks))
+	// Validate the complete immutable upload set before the first network side
+	// effect. Otherwise a malformed later chunk could leave an avoidable partial
+	// upload, and metadata could claim a hash different from the stored bytes.
 	for index, chunk := range encrypted.Chunks {
 		expected := encrypted.Manifest.Chunks[index]
 		if chunk.Metadata.Index != index || chunk.Metadata.RouteTag != expected.RouteTag ||
 			chunk.Metadata.CipherSize != expected.CipherSize || !bytes.Equal(chunk.Metadata.CipherHash, expected.CipherHash) ||
+			len(chunk.Payload) != expected.CipherSize || len(chunk.DeleteToken) != protocol.CapabilityBytes ||
 			!bytes.Equal(chunk.DeleteToken, encrypted.Secret.DeleteTokens[index].DeleteToken) {
-			return deliveries, errors.New("encrypted chunk metadata mismatch")
+			return nil, errors.New("encrypted chunk metadata mismatch")
 		}
+		digest := sha256.Sum256(chunk.Payload)
+		if !bytes.Equal(digest[:], expected.CipherHash) {
+			return nil, errors.New("encrypted chunk payload hash mismatch")
+		}
+	}
+	if core == nil {
+		return nil, errors.New("client core is required")
+	}
+	deliveries := make([]client.Delivery, 0, len(encrypted.Chunks))
+	for _, chunk := range encrypted.Chunks {
 		delivery, err := core.StoreOpaque(ctx, chunk.Metadata.RouteTag, chunk.Payload, chunk.DeleteToken)
 		if err != nil {
 			return deliveries, fmt.Errorf("store encrypted chunk %d: %w", chunk.Metadata.Index, err)
@@ -216,6 +226,9 @@ func Store(ctx context.Context, core *client.Core, encrypted EncryptedFile) ([]c
 func Retrieve(ctx context.Context, core *client.Core, secret FileSecret, manifest protocol.FileManifest, deleteAfterSuccess bool) ([]byte, map[string]error, error) {
 	if err := validateManifest(secret, manifest); err != nil {
 		return nil, nil, err
+	}
+	if core == nil {
+		return nil, nil, errors.New("client core is required")
 	}
 	routeTags := make([]string, 0, len(manifest.Chunks))
 	metadataByHash := make(map[string]protocol.FileChunk)
@@ -269,10 +282,8 @@ func validateManifest(secret FileSecret, manifest protocol.FileManifest) error {
 	if err != nil || len(fileID) != protocol.CapabilityBytes || manifest.Version != protocol.ProtocolVersion ||
 		manifest.FileID != secret.FileID || len(secret.Key) != 32 || manifest.PlaintextBytes <= 0 ||
 		manifest.PlaintextBytes > protocol.DefaultMaxFileBytes || manifest.ChunkSize < 16*1024 ||
-		manifest.ChunkSize > protocol.DefaultMaxItemBytes-1024 || len(manifest.Name) == 0 ||
-		len(manifest.Name) > MaxFileNameBytes || filepath.Base(manifest.Name) != manifest.Name ||
-		len(manifest.MediaType) == 0 || len(manifest.MediaType) > MaxMediaTypeBytes ||
-		strings.ContainsAny(manifest.Name+manifest.MediaType, "\x00\r\n") {
+		manifest.ChunkSize > protocol.DefaultMaxItemBytes-1024 || !validPortableFileName(manifest.Name) ||
+		!validMediaType(manifest.MediaType) {
 		return errors.New("invalid file manifest")
 	}
 	expectedChunks := (manifest.PlaintextBytes + int64(manifest.ChunkSize) - 1) / int64(manifest.ChunkSize)
@@ -300,4 +311,29 @@ func validateManifest(secret FileSecret, manifest protocol.FileManifest) error {
 		seenHashes[string(metadata.CipherHash)] = struct{}{}
 	}
 	return nil
+}
+
+func validPortableFileName(name string) bool {
+	if name == "" || name == "." || name == ".." || len(name) > MaxFileNameBytes || !utf8.ValidString(name) ||
+		strings.ContainsAny(name, "/\\\x00\r\n") {
+		return false
+	}
+	for _, value := range name {
+		if value < 0x20 || value == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func validMediaType(mediaType string) bool {
+	if mediaType == "" || len(mediaType) > MaxMediaTypeBytes || !utf8.ValidString(mediaType) {
+		return false
+	}
+	for _, value := range mediaType {
+		if value < 0x20 || value == 0x7f {
+			return false
+		}
+	}
+	return true
 }

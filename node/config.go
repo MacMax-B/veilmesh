@@ -4,9 +4,12 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type Config struct {
@@ -28,7 +31,7 @@ func DefaultConfig() Config {
 	return Config{
 		ListenAddress:         "127.0.0.1:8787",
 		DataDir:               "./propagare-data",
-		KeyFile:               "./propagare-node-key.json",
+		KeyFile:               "./propagare-secrets/node-key.json",
 		BaseDifficulty:        16,
 		EpochSeconds:          10 * 60,
 		MaxItemBytes:          protocol.DefaultMaxItemBytes,
@@ -51,7 +54,67 @@ func (c Config) Validate() error {
 		c.SweepInterval <= 0 || c.MaxConcurrentRequests <= 0 || c.MaxConcurrentRequests > 4096 {
 		return errors.New("invalid node configuration bounds")
 	}
+	dataDir, err := canonicalConfiguredPath(c.DataDir)
+	if err != nil {
+		return errors.New("invalid node data directory path")
+	}
+	keyFile, err := canonicalConfiguredPath(c.KeyFile)
+	if err != nil {
+		return errors.New("invalid node signing key path")
+	}
+	if pathsOverlap(dataDir, keyFile) {
+		return errors.New("node data directory and signing key path must not overlap")
+	}
 	return nil
+}
+
+// canonicalConfiguredPath resolves every existing path prefix, then appends
+// any not-yet-created suffix. This catches both lexical overlap and overlap
+// hidden behind an existing symlink without requiring startup paths to exist.
+func canonicalConfiguredPath(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("empty path")
+	}
+	absolute, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	current := absolute
+	var suffix []string
+	for {
+		_, statErr := os.Lstat(current)
+		if statErr == nil {
+			resolved, resolveErr := filepath.EvalSymlinks(current)
+			if resolveErr != nil {
+				return "", resolveErr
+			}
+			for index := len(suffix) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, suffix[index])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(statErr, os.ErrNotExist) {
+			return "", statErr
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", statErr
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
+func pathsOverlap(first, second string) bool {
+	return pathContains(first, second) || pathContains(second, first)
+}
+
+func pathContains(parent, child string) bool {
+	relative, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 // ValidateServerTransport prevents accidental public cleartext operation. Plain

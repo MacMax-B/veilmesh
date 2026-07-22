@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"propagare/account"
-	"propagare/identity"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/account"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const MaxRatchetSkippedKeys = 2048

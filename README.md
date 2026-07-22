@@ -11,12 +11,15 @@ können später dieselbe Core-API verwenden.
 Das Repository ist ein **Security-Prototyp und kein produktionsfertiger
 Messenger**. Die bereits implementierten Bausteine sind real und getestet; die
 noch fehlenden Sicherheitsgrenzen sind in `SECURITY.md` und `docs/ARCHITECTURE.md`
-explizit aufgeführt.
+explizit aufgeführt. Die verbindliche Release-Entscheidung und alle externen
+Gates stehen in [`docs/RELEASE-READINESS.md`](docs/RELEASE-READINESS.md).
 
 ## Bereits implementiert
 
 - Client-Core als öffentliches Go-Paket ohne Benutzeroberfläche
 - Node-Server mit persistenter, automatisch ablaufender Speicherung
+- persistente Lösch-Tombstones, signierte Bindung von Store und Node-Identität
+  sowie ein exklusiver Schlüssel-Lease über die gesamte Prozesslaufzeit
 - festes Speicherfenster: jedes Item läuft exakt 60 Tage nach Erstellung ab;
   ein anderes Ablaufdatum wird abgelehnt, früheres Entfernen geht nur über die
   geheime Lösch-Capability
@@ -33,7 +36,8 @@ explizit aufgeführt.
 - authentisiert verschlüsselter lokaler Client-Store mit standardmäßig und
   maximal 10 GiB, oldest-first Cache-Pruning und Schutz nicht abgelaufener
   Sicherheitszustände sowie exklusivem Prozess-Lock
-- verschlüsselter Sync zu allen durch das Konto signierten eigenen Geräten
+- signierter und replaygeschützter verschlüsselter Sync zu allen durch das
+  aktuelle Konto-Profil autorisierten eigenen Geräten
 - selbstzertifizierende, typisierte `ENIGC1…`-Konten, `ENIGD1…`-Geräte und
   `ENIGG1…`-Gruppen; Directory-Antworten werden lokal neu gebunden und signiert
 - Registrierung hinter einer verpflichtenden OS-Keychain-/Hardware-Vault-Grenze
@@ -43,6 +47,8 @@ explizit aufgeführt.
 - `ENIG-Mix v2`: moderater, größenbegrenzter Command-Layer und konstant
   getakteter Real-/Poll-/Cover-Scheduler mit festen Paketen und hartem
   Fail-Closed-Verhalten
+- verifizierte zufällige Full-Node-Routenzuweisung mit drei Mix-Hops, einem
+  Courier und drei Replikaten ohne Identitäts- oder grobe IP-Präfix-Wiederholung
 - IP-basiertes Node-Verzeichnis mit ausgelieferter Seed-Pin-Liste, hybrid
   signierten Kurzzeit-Leases, Rückruf-Challenge, Seed-Quorum, Ablaufbereinigung
   und signierten vollständigen Snapshots für Nodes und Clients
@@ -64,6 +70,9 @@ explizit aufgeführt.
 - Der ENIG-Mix-Scheduler und seine PQ-/Audit-Provider-Grenzen sind implementiert;
   ein konkreter auditierter PQ-hybrider Sphinx-/Mixnet-Provider, Courier und
   reale Relay-Infrastruktur sind noch nicht enthalten.
+- Alle Nodes sollen dasselbe Full-Node-Binary mit Mix-, Courier-, Speicher- und
+  Directory-Fähigkeiten ausführen. Die Aufgabenzuweisung ist implementiert; die
+  gemeinsame Relay-/Courier-Laufzeit und ihre Konformitätsprüfung fehlen noch.
 - Die versiegelte HPKE-Nachricht ist ein sicherer PQ-hybrider Baustein, aber noch
   kein vollständiges PQXDH-/Double-Ratchet-Protokoll mit Forward Secrecy und
   Post-Compromise Security. `message.StrictPipeline` definiert und erzwingt die
@@ -110,7 +119,10 @@ docs/          Architektur, Protokoll und Codex-Weiterbauanleitung
 ## Voraussetzungen
 
 - Go 1.26.5 oder neuer; `go.mod` pinnt den minimal gehärteten Toolchain
-- ein Betriebssystem, das von Go unterstützt wird
+- Linux, macOS oder Windows für die persistente Preview; weitere per Build-Tag
+  unterstützte Unix-Ziele benötigen einen eigenen Plattform-CI-Lauf, alle
+  anderen Dateisystemplattformen scheitern an der Lock-/Rechte-/Durability-
+  Grenze geschlossen
 
 Go 1.26 wird wegen dessen standardisierter ML-KEM- und hybrider
 HPKE-Unterstützung benötigt. Patchlevel 1.26.5 ist das Minimum, weil ältere
@@ -120,8 +132,13 @@ HPKE-Unterstützung benötigt. Patchlevel 1.26.5 ist das Minimum, weil ältere
 
 ```bash
 go mod download
-go test ./...
-go test -race ./...
+go mod verify
+test -z "$(gofmt -l $(git ls-files '*.go'))"
+go mod tidy -diff
+go vet ./...
+go test -count=1 ./...
+go test -race -count=1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -show verbose ./...
 ```
 
 Die Integrationstests starten lokale kurzlebige Nodes und prüfen Verschlüsselung,
@@ -139,6 +156,15 @@ go run ./cmd/propagare-node \
 
 Für ein Quorum sollten mindestens fünf unabhängige Nodes laufen. Der
 Referenzserver sollte nicht direkt ins öffentliche Internet gestellt werden.
+
+Der Standardschlüssel liegt getrennt vom Datenspeicher unter
+`./propagare-secrets/node-key.json`. Ein gebundener Store startet bei fehlendem
+Schlüssel immer geschlossen und erzeugt keine neue Identität. Soll ein bereits
+vorhandener Schlüssel absichtlich an ein neues leeres Datenverzeichnis gebunden
+werden, ist beim ersten Start zusätzlich `-initialize-empty-store` erforderlich.
+Alte nichtleere Stores ohne signierte Identitätsbindung werden nicht automatisch
+migriert; sie müssen mit einem kontrollierten, offline geprüften Migrationsplan
+überführt werden.
 
 Der optionale Verzeichnisbetrieb verlangt eine mit Client-Releases gemeinsam
 ausgelieferte `propagare-seeds.json`. Sie pinnt vollständige hybride

@@ -6,8 +6,8 @@ import (
 	"encoding/base32"
 	"strings"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (
@@ -66,8 +66,9 @@ func valid(id, prefix string) bool {
 	if len(id) != len(prefix)+digestTextBytes || !strings.HasPrefix(id, prefix) {
 		return false
 	}
-	digest, err := encoding.DecodeString(id[len(prefix):])
-	return err == nil && len(digest) == sha256.Size
+	encodedDigest := id[len(prefix):]
+	digest, err := encoding.DecodeString(encodedDigest)
+	return err == nil && len(digest) == sha256.Size && encoding.EncodeToString(digest) == encodedDigest
 }
 
 func ValidAccountID(id string) bool { return valid(id, AccountPrefix) }

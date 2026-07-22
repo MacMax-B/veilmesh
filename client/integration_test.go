@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"propagare/node"
-	"propagare/pqcrypto"
-	"propagare/transportauth"
+	"github.com/MacMax-B/propagare/node"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/transportauth"
 )
 
 func TestDirectMessageReplicatesFallsBackAuditsAndDeletes(t *testing.T) {
@@ -59,7 +59,7 @@ func TestDirectMessageReplicatesFallsBackAuditsAndDeletes(t *testing.T) {
 	// Break a primary node after discovery. The fourth candidate must replace it.
 	servers[0].Close()
 
-	core, err := New(Config{Nodes: nodes, Replicas: 3, WriteQuorum: 2})
+	core, err := NewEphemeralForDevelopment(Config{Nodes: nodes, Replicas: 3, WriteQuorum: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

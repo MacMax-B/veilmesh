@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"propagare/client"
+	"github.com/MacMax-B/propagare/client"
 )
 
 func TestDiskStoreChargesEncodedRecordAndFixedOverhead(t *testing.T) {
@@ -65,8 +65,11 @@ func TestDiskStoreClonesMutableItemBytes(t *testing.T) {
 	}
 }
 
-func TestDiskStoreRejectsRecordWhoseFilenameDoesNotMatchItemID(t *testing.T) {
+func TestDiskStoreFailsClosedWithoutDeletingMismatchedRecord(t *testing.T) {
 	directory := t.TempDir()
+	if err := ensurePrivateStoreDirectory(directory); err != nil {
+		t.Fatal(err)
+	}
 	item := storedTestItem(t, mustRouteTag(t), []byte("ciphertext"))
 	encoded, err := json.Marshal(item)
 	if err != nil {
@@ -76,21 +79,23 @@ func TestDiskStoreRejectsRecordWhoseFilenameDoesNotMatchItemID(t *testing.T) {
 	if err := os.WriteFile(wrongPath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewDiskStore(directory, 1024*1024, 1024*1024)
+	if _, err := NewDiskStore(directory, 1024*1024, 1024*1024); !errors.Is(err, ErrCorruptStore) {
+		t.Fatalf("mismatched record returned %v, want fail-closed corruption error", err)
+	}
+	preserved, err := os.ReadFile(wrongPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	if _, err := store.Get(item.ItemID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("mismatched path resurrected item: %v", err)
-	}
-	if _, err := os.Stat(wrongPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("mismatched record was not removed: %v", err)
+	if string(preserved) != string(encoded) {
+		t.Fatal("mismatched record was modified during failed reopen")
 	}
 }
 
 func TestDiskStoreCleansAbandonedPrivateTemporary(t *testing.T) {
 	directory := t.TempDir()
+	if err := ensurePrivateStoreDirectory(directory); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(directory, ".propagare-private-abandoned")
 	if err := os.WriteFile(path, []byte("ciphertext"), 0o600); err != nil {
 		t.Fatal(err)

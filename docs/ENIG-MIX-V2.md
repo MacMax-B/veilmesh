@@ -7,10 +7,34 @@ metadatenresistentes asynchrones Messaging. Es definiert Command-Grenzen,
 Verkehrsform, Provider-Anforderungen und Fehlerverhalten, aber absichtlich keine
 neue kryptografische Primitive und kein eigenes Onion-Paketformat.
 
-Implementiert sind Parser, Queue und Scheduler. Nicht enthalten sind ein
-unabhängig auditierter PQ-hybrider Sphinx-/Onion-Provider, Courier, Mix-PKI,
+Implementiert sind Parser, Queue, Scheduler und die verifizierte zufällige
+Full-Node-Routenzuweisung. Nicht enthalten sind ein unabhängig auditierter
+PQ-hybrider Sphinx-/Onion-Provider, die Courier-/Relay-Laufzeit, Mix-PKI,
 uniforme Downlink-Infrastruktur und reale Relays. Direkter HTTP-Betrieb ist nicht
 anonym; v2 allein begründet keine produktive Metadatenanonymität.
+
+## Einheitliches Full-Node-Modell
+
+Propagare verwendet keine dauerhaft verschiedenen Mix-, Courier- oder
+Speicher-Node-Typen. Jede vollständig konforme Installation soll denselben
+`propagare-node`-Code ausführen und jede dieser Aufgaben übernehmen können. Das
+Directory veröffentlicht deshalb keine frei wählbaren Rollen; die Aufgabe wird
+für jede Route neu vom Client vergeben.
+
+`mixtransport.SelectFullRoute` wählt aus vollständig verifizierten
+Directory-Records genau drei Mix-Hops, einen Courier und drei Speicherreplikate.
+Eine Identität darf innerhalb derselben Route nur einmal vorkommen. Zusätzlich
+müssen die sieben Nodes in unterschiedlichen IPv4-/24- beziehungsweise
+IPv6-/48-Präfixen liegen. Diese Präfixregel erschwert triviale Korrelation durch
+mehrere Adressen desselben Netzes, beweist aber keine Betreiberunabhängigkeit.
+Eine spätere Betreiberattestierung darf deshalb nur ergänzend und nicht als
+Ersatz für die bestehende Identitäts- und Netzdiversität verwendet werden.
+
+Das Full-Node-Modell bedeutet gleiche Software und Fähigkeiten, nicht dass eine
+einzelne Node mehrere Positionen desselben Pfades besetzen darf. Ein öffentlicher
+Record darf erst als produktiv konform gelten, wenn die noch fehlenden
+Relay-, Courier-, SURB- und Speicherschnittstellen gemeinsam aktiv und geprüft
+sind. Der aktuelle Directory-Record beweist diese Laufzeitkonformität noch nicht.
 
 ## Sicherheitsziel und Annahmen
 
@@ -52,13 +76,15 @@ auditierter PQ-hybrider Sphinx-/Onion-Provider
 persistente PQ-hybrid geschützte Entry-Verbindung
         │
         ▼
-mindestens drei unabhängige Mix-Schichten
+mindestens drei für diese Route unterschiedliche Mix-Schichten
         │
         ▼
 Courier/Storage/Directory ── uniforme feste Antwort über SURB
 ```
 
-Die Mix-Schicht erhält nur bereits verschlüsselte Commands und einmalige
+Jede Box in diesem Diagramm kann von derselben Full-Node-Software ausgeführt
+werden, wird aber pro Route einer anderen Node-Identität zugewiesen. Die
+Mix-Schicht erhält nur bereits verschlüsselte Commands und einmalige
 Capabilities. Entry- und Zwischenhops dürfen weder Kontakte noch Route-Tags
 protokollieren. Der direkte IP-Node-Verzeichnisabruf ist ein separater
 Bootstrap-/Kontrollpfad und besitzt keine Metadatenanonymitätsgarantie.

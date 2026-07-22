@@ -5,7 +5,10 @@ Schlüssel ableiten noch Node-Quoren, Lösch-Tokens oder Route-Tags verwalten.
 
 ## Aktuelle öffentliche Core-Funktionen
 
-- `client.New`: Core mit vertrauenswürdig bezogenen Node-Deskriptoren erstellen.
+- `client.New`: Core mit vertrauenswürdig bezogenen Node-Deskriptoren und
+  verpflichtendem persistentem `ClientStore` erstellen;
+  `client.NewEphemeralForDevelopment` ist die explizite, nicht produktive
+  Ausnahme.
 - `client.ConnectPinnedHTTPNode`: produktiven CA-PKI-freien TLS-1.3-Kanal gegen eine
   bereits vertrauenswürdig bezogene vollständige Node-Identität aufbauen;
   `DiscoverHTTPNode` bleibt für konventionell CA-validiertes HTTPS und
@@ -17,7 +20,9 @@ Schlüssel ableiten noch Node-Quoren, Lösch-Tokens oder Route-Tags verwalten.
 - `client.FetchNodeDirectory`: mehrere gepinnte Seed-Snapshots prüfen und die
   vollständige aktive Union der hybrid attestierten IP-Leases liefern.
 - `client.ConnectDirectoryRecords`: eine hart begrenzte Auswahl aufbauen und
-  jede präsentierte Node-Identität nochmals gegen den Directory-Record prüfen.
+  jede präsentierte Node-Identität nochmals gegen den Directory-Record prüfen;
+  Produktion akzeptiert dabei nur öffentlich routbares `https`, private Netze
+  benötigen `ConnectDirectoryRecordsForDevelopment`.
 - `Core.SendDirect`: gepolsterte, hybrid PQ-verschlüsselte Nachricht replizieren.
 - `Core.Fetch`: Ciphertext über kurzlebige Route-Tags abrufen und deduplizieren.
 - `client.OpenDirectItem`: versiegelte Nachricht lokal öffnen.
@@ -26,12 +31,19 @@ Schlüssel ableiten noch Node-Quoren, Lösch-Tokens oder Route-Tags verwalten.
 - `Core.Delete`: bekannte Replikate capability-basiert löschen.
 - `Core.LoadDelivery`: Replikations-, Reparatur- und Löschzustand nach Neustart
   laden und alle Node-Belege erneut hybrid prüfen.
+- `Core.PendingDeliveries`: aktive persistierte Zustellungen stabil und
+  größenbegrenzt paginieren, damit Reparatur und Löschung nach einem Neustart
+  ohne bereits bekannte Item-ID fortgesetzt werden können.
 - `Core.ClientStorageUsage`, `Core.SetClientStorageLimit`,
   `Core.PruneClientStorage`: Belegung anzeigen, ein kleineres Limit setzen und
   nur gemäß expliziter Prune-Richtlinie bereinigen.
 - `Core.Reputation`: lokalen Node-Status für Diagnose darstellen.
 - `media.EncryptFile`, `media.Store`, `media.Retrieve`: Bilder und Dateien.
-- `account.SignDevice`, `account.SealSyncEvent`: eigene Geräte verbinden.
+- `account.SignDevice`, `account.SealSyncEvent`, `account.OpenSyncEvent`: eigene
+  Geräte verbinden und signierte, profilrevisionsgebundene Sync-Ereignisse mit
+  persistentem Replay-Schutz übertragen.
+- `client.NewEncryptedSyncReplayStore`: den atomaren Sync-Replay-Adapter auf dem
+  verschlüsselten Client-Store aufbauen.
 - `account.Register`, `account.Load`: `ENIGC1…`-Konto ausschließlich hinter
   einer geschützten `SecretVault`-Implementierung erzeugen beziehungsweise laden.
 - `account.ResolveVerified`: unvertrauenswürdige Directory-Profile gegen ID,

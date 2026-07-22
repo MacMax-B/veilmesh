@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"propagare/client"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/client"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type mediaRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -116,19 +116,9 @@ func TestRetrieveBatchesFilesBeyondSingleFetchLimits(t *testing.T) {
 	}
 	signer, _ := pqcrypto.GenerateHybridSigner()
 	requests := 0
-	node := &client.HTTPNode{
-		BaseURL: "https://node.invalid", Identity: signer.PublicIdentity(),
-		Client: &http.Client{Transport: mediaRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-			requests++
-			var fetch protocol.FetchRequest
-			if err := json.NewDecoder(request.Body).Decode(&fetch); err != nil {
-				t.Fatal(err)
-			}
-			items := make([]protocol.StoredItem, 0, len(fetch.RouteTags))
-			for _, routeTag := range fetch.RouteTags {
-				items = append(items, byRoute[routeTag])
-			}
-			body, err := json.Marshal(protocol.FetchResponse{Items: items})
+	httpClient := &http.Client{Transport: mediaRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method == http.MethodGet && request.URL.Path == "/v1/identity" {
+			body, err := json.Marshal(signer.PublicIdentity())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,9 +126,30 @@ func TestRetrieveBatchesFilesBeyondSingleFetchLimits(t *testing.T) {
 				StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header),
 				Body: io.NopCloser(bytes.NewReader(body)), Request: request,
 			}, nil
-		})},
+		}
+		requests++
+		var fetch protocol.FetchRequest
+		if err := json.NewDecoder(request.Body).Decode(&fetch); err != nil {
+			t.Fatal(err)
+		}
+		items := make([]protocol.StoredItem, 0, len(fetch.RouteTags))
+		for _, routeTag := range fetch.RouteTags {
+			items = append(items, byRoute[routeTag])
+		}
+		body, err := json.Marshal(protocol.FetchResponse{Items: items})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header),
+			Body: io.NopCloser(bytes.NewReader(body)), Request: request,
+		}, nil
+	})}
+	node, err := client.DiscoverHTTPNodeForDevelopment(context.Background(), "http://127.0.0.1:8787", httpClient)
+	if err != nil {
+		t.Fatal(err)
 	}
-	core, err := client.New(client.Config{Nodes: []*client.HTTPNode{node}, Replicas: 1, WriteQuorum: 1})
+	core, err := client.NewEphemeralForDevelopment(client.Config{Nodes: []*client.HTTPNode{node}, Replicas: 1, WriteQuorum: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
