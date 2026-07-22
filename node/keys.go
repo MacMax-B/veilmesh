@@ -21,7 +21,14 @@ const (
 	maxNodeLockFileBytes   = 4 * 1024
 )
 
-var ErrNodeSigningKeyMissing = errors.New("node signing key is missing")
+var (
+	ErrNodeSigningKeyMissing = errors.New("node signing key is missing")
+	// LoadOrCreateSigner is a process-local provisioning helper. Serializing it
+	// prevents a second goroutine from observing the newly created Windows lock
+	// file before its protected DACL has been installed. Cross-process startup
+	// remains guarded by the OS file lock below.
+	nodeSignerProvisioningMu sync.Mutex
+)
 
 type committedPrivateWriteError struct{ cause error }
 
@@ -61,6 +68,9 @@ func (lease *NodeSignerLease) Close() error {
 // LoadOrCreateSigner is a one-shot provisioning helper. A running node must
 // use AcquireNodeSigner so the identity cannot be active in two processes.
 func LoadOrCreateSigner(path string) (*pqcrypto.HybridSigner, error) {
+	nodeSignerProvisioningMu.Lock()
+	defer nodeSignerProvisioningMu.Unlock()
+
 	path, directory, err := prepareNodeKeyPath(path)
 	if err != nil {
 		return nil, err
