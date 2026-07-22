@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 func FuzzStrictDirectCiphertextJSON(f *testing.F) {

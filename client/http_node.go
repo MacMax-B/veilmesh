@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -14,25 +13,68 @@ import (
 	"strings"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
-	"propagare/transportauth"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
+	"github.com/MacMax-B/propagare/transportauth"
 )
 
 const (
 	receiptDomain       = "storage-receipt"
 	proofDomain         = "storage-proof"
 	deleteReceiptDomain = "delete-receipt"
+
+	maxIdentityResponseBytes       int64 = 64 * 1024
+	maxParametersResponseBytes           = 16 * 1024
+	maxStorageReceiptResponseBytes       = 16 * 1024
+	maxStorageProofResponseBytes         = 32 * 1024
+	maxDeleteReceiptResponseBytes        = 16 * 1024
+	maxFetchResponseBytes                = 12 * 1024 * 1024
 )
 
+var (
+	ErrUntrustedNodeTransport = errors.New("node transport is not authenticated")
+	ErrNodeTransport          = errors.New("node transport failed")
+	ErrNodeHTTPStatus         = errors.New("node returned an HTTP error")
+	ErrInvalidNodeResponse    = errors.New("node returned an invalid response")
+	ErrNodeResponseTooLarge   = errors.New("node response exceeds size limit")
+)
+
+type nodeConnectionMode uint8
+
+const (
+	nodeConnectionInvalid nodeConnectionMode = iota
+	nodeConnectionDiscovery
+	nodeConnectionPinned
+	nodeConnectionPrivateDevelopment
+)
+
+// HTTPNode deliberately has no exported mutable fields. A production-capable
+// instance can only be created by ConnectPinnedHTTPNode. Discovery returns an
+// informational descriptor, while the explicitly named development constructor
+// permits operational plain HTTP only to literal private or loopback addresses.
 type HTTPNode struct {
-	BaseURL  string
-	Identity protocol.NodePublicIdentity
-	Client   *http.Client
+	baseURL  string
+	identity protocol.NodePublicIdentity
+	client   *http.Client
+	mode     nodeConnectionMode
+}
+
+func (n *HTTPNode) BaseURL() string {
+	if n == nil {
+		return ""
+	}
+	return n.baseURL
+}
+
+func (n *HTTPNode) Identity() protocol.NodePublicIdentity {
+	if n == nil {
+		return protocol.NodePublicIdentity{}
+	}
+	return cloneNodeIdentity(n.identity)
 }
 
 func DiscoverHTTPNode(ctx context.Context, baseURL string, httpClient *http.Client) (*HTTPNode, error) {
-	return discoverHTTPNode(ctx, baseURL, httpClient, false)
+	return discoverHTTPNode(ctx, baseURL, httpClient, nodeConnectionDiscovery)
 }
 
 // DiscoverHTTPNodeForDevelopment permits plain HTTP only for literal loopback
@@ -40,7 +82,7 @@ func DiscoverHTTPNode(ctx context.Context, baseURL string, httpClient *http.Clie
 // so route capabilities and delete tokens are encrypted without relying on a
 // public certificate authority.
 func DiscoverHTTPNodeForDevelopment(ctx context.Context, baseURL string, httpClient *http.Client) (*HTTPNode, error) {
-	return discoverHTTPNode(ctx, baseURL, httpClient, true)
+	return discoverHTTPNode(ctx, baseURL, httpClient, nodeConnectionPrivateDevelopment)
 }
 
 // ConnectPinnedHTTPNode establishes a CA-PKI-free TLS 1.3 channel whose server
@@ -58,17 +100,20 @@ func ConnectPinnedHTTPNode(ctx context.Context, baseURL string, identity protoco
 	if err != nil {
 		return nil, err
 	}
-	node, err := discoverHTTPNode(ctx, baseURL, pinnedClient, false)
+	node, err := discoverHTTPNode(ctx, baseURL, pinnedClient, nodeConnectionPinned)
 	if err != nil {
 		return nil, err
 	}
-	if !sameNodeIdentity(node.Identity, identity) {
+	if !sameNodeIdentity(node.identity, identity) {
 		return nil, errors.New("node identity endpoint does not match the pinned identity")
 	}
 	return node, nil
 }
 
-func discoverHTTPNode(ctx context.Context, baseURL string, httpClient *http.Client, allowPrivateHTTP bool) (*HTTPNode, error) {
+func discoverHTTPNode(ctx context.Context, baseURL string, httpClient *http.Client, mode nodeConnectionMode) (*HTTPNode, error) {
+	if ctx == nil {
+		return nil, errors.New("node discovery context is required")
+	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
 	}
@@ -76,30 +121,41 @@ func discoverHTTPNode(ctx context.Context, baseURL string, httpClient *http.Clie
 	if err != nil {
 		return nil, errors.New("invalid node base URL")
 	}
-	if parsed.Scheme == "http" && (!allowPrivateHTTP || !privateDevelopmentHost(parsed.Hostname())) {
-		return nil, errors.New("plain HTTP node discovery is restricted to explicit private development")
+	switch mode {
+	case nodeConnectionDiscovery, nodeConnectionPinned:
+		if parsed.Scheme != "https" {
+			return nil, errors.New("production node discovery requires HTTPS framing")
+		}
+	case nodeConnectionPrivateDevelopment:
+		if parsed.Scheme != "http" || !privateDevelopmentHost(parsed.Hostname()) {
+			return nil, errors.New("development node discovery requires a private plain HTTP endpoint")
+		}
+	default:
+		return nil, errors.New("invalid node connection mode")
 	}
 	safeClient := *httpClient
+	safeClient.Jar = nil
 	safeClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	n := &HTTPNode{BaseURL: strings.TrimRight(baseURL, "/"), Client: &safeClient}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, n.BaseURL+"/v1/identity", nil)
+	n := &HTTPNode{baseURL: strings.TrimRight(baseURL, "/"), client: &safeClient, mode: mode}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, n.baseURL+"/v1/identity", nil)
 	if err != nil {
-		return nil, err
+		return nil, ErrNodeTransport
 	}
-	response, err := n.Client.Do(request)
+	response, err := n.client.Do(request)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeNodeTransportError(ctx, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, responseError(response)
 	}
-	if err := decodeResponseJSON(response.Body, 64*1024, &n.Identity); err != nil {
+	if err := decodeResponseJSON(response.Body, maxIdentityResponseBytes, &n.identity); err != nil {
 		return nil, err
 	}
-	if !pqcrypto.ValidPublicIdentity(n.Identity) {
-		return nil, errors.New("node identity is internally inconsistent")
+	if !pqcrypto.ValidPublicIdentity(n.identity) {
+		return nil, ErrInvalidNodeResponse
 	}
+	n.identity = cloneNodeIdentity(n.identity)
 	return n, nil
 }
 
@@ -117,9 +173,53 @@ func sameNodeIdentity(left, right protocol.NodePublicIdentity) bool {
 		bytes.Equal(left.Ed25519Public, right.Ed25519Public) && bytes.Equal(left.MLDSA65Public, right.MLDSA65Public)
 }
 
+func cloneNodeIdentity(identity protocol.NodePublicIdentity) protocol.NodePublicIdentity {
+	identity.Ed25519Public = append([]byte(nil), identity.Ed25519Public...)
+	identity.MLDSA65Public = append([]byte(nil), identity.MLDSA65Public...)
+	return identity
+}
+
+func (n *HTTPNode) operational() error {
+	if n == nil || n.client == nil || !pqcrypto.ValidPublicIdentity(n.identity) {
+		return ErrUntrustedNodeTransport
+	}
+	parsed, err := validNodeBaseURL(n.baseURL)
+	if err != nil {
+		return ErrUntrustedNodeTransport
+	}
+	switch n.mode {
+	case nodeConnectionPinned:
+		if parsed.Scheme != "https" {
+			return ErrUntrustedNodeTransport
+		}
+	case nodeConnectionPrivateDevelopment:
+		if parsed.Scheme != "http" || !privateDevelopmentHost(parsed.Hostname()) {
+			return ErrUntrustedNodeTransport
+		}
+	default:
+		return ErrUntrustedNodeTransport
+	}
+	return nil
+}
+
+func cloneOperationalHTTPNode(n *HTTPNode) (*HTTPNode, error) {
+	if err := n.operational(); err != nil {
+		return nil, err
+	}
+	clientCopy := *n.client
+	clientCopy.Jar = nil
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if transport, ok := n.client.Transport.(*http.Transport); ok {
+		clientCopy.Transport = transport.Clone()
+	}
+	return &HTTPNode{
+		baseURL: n.baseURL, identity: cloneNodeIdentity(n.identity), client: &clientCopy, mode: n.mode,
+	}, nil
+}
+
 func (n *HTTPNode) Parameters(ctx context.Context) (protocol.NodeParameters, error) {
 	var parameters protocol.NodeParameters
-	err := n.getJSON(ctx, "/v1/parameters", &parameters)
+	err := n.getJSON(ctx, "/v1/parameters", &parameters, maxParametersResponseBytes)
 	if err == nil {
 		err = protocol.ValidateNodeParameters(parameters)
 	}
@@ -128,11 +228,11 @@ func (n *HTTPNode) Parameters(ctx context.Context) (protocol.NodeParameters, err
 
 func (n *HTTPNode) Store(ctx context.Context, item protocol.StoredItem) (protocol.StorageReceipt, error) {
 	var receipt protocol.StorageReceipt
-	if err := n.postJSON(ctx, "/v1/items", item, &receipt); err != nil {
+	if err := n.postJSON(ctx, "/v1/items", item, &receipt, maxStorageReceiptResponseBytes); err != nil {
 		return receipt, err
 	}
 	now := time.Now()
-	if err := verifyStorageReceipt(n.Identity, item, receipt, now); err != nil {
+	if err := verifyStorageReceipt(n.identity, item, receipt, now); err != nil {
 		return protocol.StorageReceipt{}, err
 	}
 	return receipt, nil
@@ -152,29 +252,36 @@ func verifyStorageReceipt(identity protocol.NodePublicIdentity, item protocol.St
 
 func (n *HTTPNode) Fetch(ctx context.Context, routeTags []string) ([]protocol.StoredItem, error) {
 	var response protocol.FetchResponse
-	if err := n.postJSON(ctx, "/v1/fetch", protocol.FetchRequest{RouteTags: routeTags}, &response); err != nil {
+	if err := n.postJSON(ctx, "/v1/fetch", protocol.FetchRequest{RouteTags: routeTags}, &response, maxFetchResponseBytes); err != nil {
 		return nil, err
 	}
 	if len(response.Items) > protocol.DefaultMaxFetchItems {
-		return nil, errors.New("node returned too many fetch items")
+		return nil, ErrNodeResponseTooLarge
+	}
+	var responseBytes int64
+	for _, item := range response.Items {
+		responseBytes += int64(len(item.Payload))
+		if responseBytes > protocol.DefaultMaxFetchBytes {
+			return nil, ErrNodeResponseTooLarge
+		}
 	}
 	return response.Items, nil
 }
 
 func (n *HTTPNode) Prove(ctx context.Context, request protocol.ProofRequest) (protocol.StorageProof, error) {
 	var proof protocol.StorageProof
-	if len(request.ItemID) != sha256.Size*2 || len(request.Nonce) < 16 || len(request.Nonce) > 64 ||
+	if !validItemID(request.ItemID) || len(request.Nonce) < 16 || len(request.Nonce) > 64 ||
 		request.Offset < 0 || request.Length <= 0 || request.Length > protocol.MaxProofSampleBytes {
 		return proof, errors.New("invalid storage proof request")
 	}
-	if err := n.postJSON(ctx, "/v1/proof", request, &proof); err != nil {
+	if err := n.postJSON(ctx, "/v1/proof", request, &proof, maxStorageProofResponseBytes); err != nil {
 		return proof, err
 	}
-	if proof.NodeID != n.Identity.NodeID || proof.ItemID != request.ItemID ||
+	if proof.NodeID != n.identity.NodeID || proof.ItemID != request.ItemID ||
 		!bytes.Equal(proof.Nonce, request.Nonce) || proof.Offset != request.Offset ||
 		len(proof.Sample) != request.Length || len(proof.PayloadHash) != sha256.Size ||
 		proof.ProvedAt.Before(time.Now().Add(-5*time.Minute)) || proof.ProvedAt.After(time.Now().Add(5*time.Minute)) ||
-		!pqcrypto.Verify(n.Identity, proofDomain, protocol.ProofSigningBytes(proof), proof.Signature) {
+		!pqcrypto.Verify(n.identity, proofDomain, protocol.ProofSigningBytes(proof), proof.Signature) {
 		return protocol.StorageProof{}, errors.New("invalid storage proof signature")
 	}
 	return proof, nil
@@ -182,47 +289,56 @@ func (n *HTTPNode) Prove(ctx context.Context, request protocol.ProofRequest) (pr
 
 func (n *HTTPNode) Delete(ctx context.Context, request protocol.DeleteRequest) (protocol.DeleteReceipt, error) {
 	var receipt protocol.DeleteReceipt
-	if err := n.postJSON(ctx, "/v1/delete", request, &receipt); err != nil {
+	if !validItemID(request.ItemID) || len(request.DeleteToken) != protocol.CapabilityBytes {
+		return receipt, errors.New("invalid delete request")
+	}
+	if err := n.postJSON(ctx, "/v1/delete", request, &receipt, maxDeleteReceiptResponseBytes); err != nil {
 		return receipt, err
 	}
-	if receipt.NodeID != n.Identity.NodeID || receipt.ItemID != request.ItemID ||
+	if receipt.NodeID != n.identity.NodeID || receipt.ItemID != request.ItemID ||
 		receipt.DeletedAt.Before(time.Now().Add(-5*time.Minute)) || receipt.DeletedAt.After(time.Now().Add(5*time.Minute)) ||
-		!pqcrypto.Verify(n.Identity, deleteReceiptDomain, protocol.DeleteReceiptSigningBytes(receipt), receipt.Signature) {
+		!pqcrypto.Verify(n.identity, deleteReceiptDomain, protocol.DeleteReceiptSigningBytes(receipt), receipt.Signature) {
 		return protocol.DeleteReceipt{}, errors.New("invalid delete receipt")
 	}
 	return receipt, nil
 }
 
-func (n *HTTPNode) getJSON(ctx context.Context, path string, destination any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, n.BaseURL+path, nil)
-	if err != nil {
+func (n *HTTPNode) getJSON(ctx context.Context, path string, destination any, responseLimit int64) error {
+	if err := n.operational(); err != nil {
 		return err
 	}
-	response, err := n.Client.Do(request)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, n.baseURL+path, nil)
 	if err != nil {
-		return err
+		return ErrNodeTransport
+	}
+	response, err := n.client.Do(request)
+	if err != nil {
+		return sanitizeNodeTransportError(ctx, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return responseError(response)
 	}
-	return decodeResponseJSON(response.Body, 2*1024*1024, destination)
+	return decodeResponseJSON(response.Body, responseLimit, destination)
 }
 
-func (n *HTTPNode) postJSON(ctx context.Context, path string, source, destination any) error {
+func (n *HTTPNode) postJSON(ctx context.Context, path string, source, destination any, responseLimit int64) error {
+	if err := n.operational(); err != nil {
+		return err
+	}
 	body, err := json.Marshal(source)
 	if err != nil {
-		return err
+		return ErrNodeTransport
 	}
 	defer zero(body)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, n.BaseURL+path, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, n.baseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return ErrNodeTransport
 	}
 	request.Header.Set("Content-Type", "application/json")
-	response, err := n.Client.Do(request)
+	response, err := n.client.Do(request)
 	if err != nil {
-		return err
+		return sanitizeNodeTransportError(ctx, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -231,25 +347,25 @@ func (n *HTTPNode) postJSON(ctx context.Context, path string, source, destinatio
 	if destination == nil {
 		return nil
 	}
-	return decodeResponseJSON(response.Body, 12*1024*1024, destination)
+	return decodeResponseJSON(response.Body, responseLimit, destination)
 }
 
 func decodeResponseJSON(reader io.Reader, limit int64, destination any) error {
 	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil {
-		return err
+		return ErrNodeTransport
 	}
 	if int64(len(data)) > limit {
-		return errors.New("node response exceeds size limit")
+		return ErrNodeResponseTooLarge
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
-		return err
+		return ErrInvalidNodeResponse
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return errors.New("node response must contain one JSON value")
+		return ErrInvalidNodeResponse
 	}
 	return nil
 }
@@ -259,7 +375,14 @@ func responseError(response *http.Response) error {
 	// tags, fetch lists, ciphertext, or delete capabilities. Never propagate them
 	// into application errors, reputation state, logs, or crash reports.
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 2048))
-	return fmt.Errorf("node returned HTTP status %d", response.StatusCode)
+	return ErrNodeHTTPStatus
+}
+
+func sanitizeNodeTransportError(ctx context.Context, _ error) error {
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return ErrNodeTransport
 }
 
 func privateDevelopmentHost(host string) bool {

@@ -7,6 +7,13 @@ Netzwerk- oder Kryptografielogik. Der Core verwaltet Konten, Geräte,
 Sitzungsschlüssel, Gruppen, Outbox, Replikation, Empfang, Dateien und Node-
 Reputation.
 
+Alle Netzteilnehmer verwenden dasselbe Full-Node-Programm. Mix-, Courier-,
+Speicher-, Directory- und Bootstrap sind Fähigkeiten desselben Binaries, keine
+unterschiedlichen proprietären Dienste. Der Client weist die Datenpfadrollen pro
+Route neu an unterschiedliche Identitäten und grobe Netzpräfixe zu. Ein
+allgemeiner Internet-Exit beziehungsweise VPN-Exit gehört ausdrücklich nicht zum
+Messenger-Overlay.
+
 ```text
 Frontend
    │ lokale, versionsgebundene Core-API
@@ -20,7 +27,7 @@ Client-Core ── verschlüsselter lokaler Zustand
    └── Node-Registry und Reputation
             │
             ▼
-     unabhängige Speicher-Nodes
+     identische, pro Route unterschiedlich eingesetzte Full Nodes
 ```
 
 ## Nachrichtenfluss
@@ -113,9 +120,28 @@ Schlüssel gehört in `account.SecretVault` beziehungsweise einen OS-/Hardware-
 Keystore und wird nie im Store-Verzeichnis abgelegt. Ein exklusiver
 plattformgebundener Dateilock verhindert zwei gleichzeitige Store-Instanzen;
 Crash-Temporaries werden beim nächsten Öffnen entfernt und fremde Dateien im
-dedizierten Store-Verzeichnis führen zu einem geschlossenen Fehler. Aktuell bindet der Core
-Replikationsbelege und Lösch-Capabilities ein; die transaktionale Einbindung
-aller Inbox-/Outbox-/Ratchet-/MLS-Zustände bleibt Phase 1.
+dedizierten Store-Verzeichnis führen zu einem geschlossenen Fehler. Der Startup-
+Pfad validiert zuerst das vollständige Verzeichnis und löscht erst danach
+Temporaries oder abgelaufene Records. Nach jedem Start wird das Verzeichnis
+erneut synchronisiert, sodass ein sichtbarer Rename mit zuvor unbekanntem
+`fsync`-Ergebnis keinen idempotenten Scheinerfolg erzeugt.
+
+Vor dem ersten externen Speichereffekt persistiert der Core pro Item die
+Lösch-Capability, vollständige hybride Identitäten und alle Nodes, die den
+Ciphertext möglicherweise erhalten. Jeder verifizierte Beleg wird danach
+inkrementell ergänzt. Audit, Reparatur und Löschung beginnen immer mit diesem
+authentifizierten kanonischen Zustand, vereinigen nur gültige zusätzliche Belege
+und bleiben über Directory-Mitgliedschaftswechsel hinweg auf die ursprünglichen
+Identitäten gepinnt. `PendingDeliveries` macht diese Zustände nach Neustart
+begrenzt paginierbar. Die transaktionale Einbindung aller weiteren Inbox-/
+Outbox-/Ratchet-/MLS-Zustände bleibt Phase 1.
+
+Der Referenz-Node ersetzt ein authentifiziert gelöschtes Item bis zu dessen
+ursprünglichem Ablauf durch einen capability-gebundenen Tombstone. Store und
+hybride Node-Identität sind dauerhaft durch einen signierten Binding-Record
+verknüpft; ein fehlender Schlüssel für einen gebundenen Store wird niemals
+automatisch ersetzt. Ein exklusiver Schlüssel-Lease verhindert, dass zwei
+Prozesse dieselbe Node-Identität gleichzeitig betreiben.
 
 ## Metadatenverschleierung
 
@@ -195,9 +221,13 @@ zertifiziert einzelne Geräte mit jeweils eigenen:
 - aus dem Geräte-Signaturschlüssel abgeleiteten `ENIGD1…`-IDs.
 
 Sync-Ereignisse werden separat für jedes aktive Gerät verschlüsselt. Ein
-verlorenes Gerät wird durch eine signierte Kontoaktion widerrufen. Danach müssen
-1:1-Sitzungen und MLS-Gruppen einen Key Update beziehungsweise Epoch Commit
-durchführen.
+verlorenes Gerät wird durch eine signierte Kontoaktion widerrufen. Zusätzlich
+signiert das Sendergerät das vollständige Sync-Ereignis einschließlich Konto,
+exakter aktueller Profilrevision, Zeitgrenzen und Empfängerliste. Empfänger
+verlangen das aktuelle Profil, ihren lokalen Mindest-Revisions-Pin und eine
+atomare persistente Replay-Reservation, bevor sie Payload ausgeben. Danach
+müssen 1:1-Sitzungen und MLS-Gruppen einen Key Update beziehungsweise Epoch
+Commit durchführen.
 
 ## Gruppen
 

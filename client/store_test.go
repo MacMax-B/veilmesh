@@ -6,14 +6,16 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
-	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/internal/privatefs"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 func clientStoreKey(t *testing.T) []byte {
@@ -77,6 +79,9 @@ func TestEncryptedClientStorePrunesOldestAtConfiguredLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
+		if entry.Name() == localStoreLockFilename {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(directory, entry.Name()))
 		if err != nil {
 			t.Fatal(err)
@@ -166,6 +171,60 @@ func TestEncryptedClientStoreCanLowerLimitAndPruneOldest(t *testing.T) {
 	}
 }
 
+func TestEncryptedClientStoreListsBoundedStablePages(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: t.TempDir(), Key: clientStoreKey(t), MaxBytes: 1024 * 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, id := range []string{"record-c", "record-a", "record-b"} {
+		if _, err := store.Put(context.Background(), localTestRecord(id, now, 128, PruneOldest), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := store.ListIDs(context.Background(), LocalKindFileCache, "", 2)
+	if err != nil || len(first) != 2 || first[0] != "record-a" || first[1] != "record-b" {
+		t.Fatalf("unexpected first list page: %v err=%v", first, err)
+	}
+	second, err := store.ListIDs(context.Background(), LocalKindFileCache, first[1], 2)
+	if err != nil || len(second) != 1 || second[0] != "record-c" {
+		t.Fatalf("unexpected second list page: %v err=%v", second, err)
+	}
+	if _, err := store.ListIDs(context.Background(), LocalKindFileCache, "", MaxClientStoreListPage+1); err == nil {
+		t.Fatal("unbounded local record listing was accepted")
+	}
+}
+
+func TestEncryptedClientStoreConcurrentLimitAndPrune(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: t.TempDir(), Key: clientStoreKey(t), MaxBytes: 128 * 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var wait sync.WaitGroup
+	for worker := 0; worker < 4; worker++ {
+		wait.Add(1)
+		go func(worker int) {
+			defer wait.Done()
+			for iteration := 0; iteration < 100; iteration++ {
+				limit := int64(128 * 1024)
+				if (worker+iteration)%2 == 0 {
+					limit = 64 * 1024
+				}
+				_, _ = store.SetLimit(context.Background(), limit, now)
+				_, _ = store.PruneTo(context.Background(), 64*1024, now)
+			}
+		}(worker)
+	}
+	wait.Wait()
+}
+
 func TestEncryptedClientStorePrunesToRecordCountBound(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
@@ -189,6 +248,76 @@ func TestEncryptedClientStorePrunesToRecordCountBound(t *testing.T) {
 	if _, err := store.Get(context.Background(), "record-one"); !errors.Is(err, ErrLocalRecordNotFound) {
 		t.Fatal("oldest record survived record-count pruning")
 	}
+}
+
+func TestClientPruneKeepsDurabilityPendingAfterPartialFailure(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	directory := t.TempDir()
+	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: directory, Key: clientStoreKey(t), MaxBytes: 1024 * 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for index, id := range []string{"record-one", "record-two"} {
+		if _, err := store.Put(context.Background(), localTestRecord(id, now.Add(time.Duration(index)*time.Second), 1024, PruneOldest), now.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blockedPath := filepath.Join(directory, "blocked-removal")
+	if err := os.Mkdir(blockedPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blockedPath, "child"), []byte("nonempty"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	second := store.entries["record-two"]
+	second.Path = blockedPath
+	store.entries["record-two"] = second
+	report, pruneErr := store.pruneToLocked(context.Background(), store.maxBytes, 0, now.Add(time.Minute), "")
+	pending := store.directorySyncPending
+	recoveryErr := store.ensureDirectoryDurableLocked()
+	store.mu.Unlock()
+	if pruneErr == nil || report.Records != 1 {
+		t.Fatalf("partial prune returned report=%+v err=%v", report, pruneErr)
+	}
+	if !pending {
+		t.Fatal("partial prune forgot the already committed directory mutation")
+	}
+	if recoveryErr != nil {
+		t.Fatalf("pending prune durability did not recover: %v", recoveryErr)
+	}
+}
+
+func TestClientStoreDoesNotExposeNondurableWrite(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: t.TempDir(), Key: clientStoreKey(t), MaxBytes: 1024 * 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	actualSync := store.syncDirectory
+	injected := errors.New("injected client record directory sync failure")
+	store.syncDirectory = func(string) error { return injected }
+	if _, err := store.Put(context.Background(), localTestRecord("nondurable", now, 1024, PruneOldest), now); !errors.Is(err, injected) {
+		t.Fatalf("nondurable write returned %v", err)
+	}
+	if _, err := store.Get(context.Background(), "nondurable"); !errors.Is(err, injected) {
+		t.Fatalf("Get exposed nondurable record: %v", err)
+	}
+	if _, err := store.ListIDs(context.Background(), LocalKindFileCache, "", 1); !errors.Is(err, injected) {
+		t.Fatalf("ListIDs exposed nondurable record: %v", err)
+	}
+	store.syncDirectory = actualSync
+	record, err := store.Get(context.Background(), "nondurable")
+	if err != nil || len(record.Payload) != 1024 {
+		t.Fatalf("durability recovery did not expose committed record: bytes=%d err=%v", len(record.Payload), err)
+	}
+	zero(record.Payload)
 }
 
 func TestEncryptedClientStoreRejectsTamperingAndWrongKey(t *testing.T) {
@@ -226,8 +355,14 @@ func TestEncryptedClientStoreRejectsTamperingAndWrongKey(t *testing.T) {
 func TestEncryptedClientStoreCleansCrashTemporaryAndRejectsUnmanagedFiles(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	directory := t.TempDir()
+	if err := ensurePrivateDirectory(directory); err != nil {
+		t.Fatal(err)
+	}
 	temporary := filepath.Join(directory, ".vmc-private-abandoned")
 	if err := os.WriteFile(temporary, []byte("sealed temporary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := privatefs.Restrict(temporary, privatefs.RegularFile); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
@@ -249,6 +384,44 @@ func TestEncryptedClientStoreCleansCrashTemporaryAndRejectsUnmanagedFiles(t *tes
 		Directory: directory, Key: clientStoreKey(t), MaxBytes: 1024 * 1024,
 	}, now); err == nil {
 		t.Fatal("unmanaged client-store file was ignored")
+	}
+}
+
+func TestClientStoreValidatesCompleteStartupBeforePruning(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	directory := t.TempDir()
+	key := clientStoreKey(t)
+	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: directory, Key: key, MaxBytes: 1024 * 1024,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(context.Background(), localTestRecord("preserve-cache", now, 128*1024, PruneOldest), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recordPath := filepath.Join(directory, localRecordFilename("preserve-cache"))
+	before, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "zzzz-unmanaged"), []byte("invalid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewEncryptedDiskStore(DiskClientStoreConfig{
+		Directory: directory, Key: key, MaxBytes: MinClientStorageBytes,
+	}, now); err == nil {
+		t.Fatal("startup accepted an unmanaged entry")
+	}
+	after, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatalf("failed startup pruned a valid record: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("failed startup modified a valid record before complete validation")
 	}
 }
 
@@ -284,7 +457,7 @@ func TestEncryptedClientStoreRequiresExclusiveDirectoryOwnership(t *testing.T) {
 func TestCorePersistsAndRevalidatesDelivery(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	signer, _ := pqcrypto.GenerateHybridSigner()
-	node := &HTTPNode{BaseURL: "https://node.invalid", Identity: signer.PublicIdentity(), Client: &http.Client{}}
+	node := developmentNodeForTest(signer.PublicIdentity(), nil)
 	directory := t.TempDir()
 	key := clientStoreKey(t)
 	store, err := NewEncryptedDiskStore(DiskClientStoreConfig{Directory: directory, Key: key, MaxBytes: 1024 * 1024}, now)
@@ -328,5 +501,17 @@ func TestCorePersistsAndRevalidatesDelivery(t *testing.T) {
 	}
 	if restored.Item.ItemID != item.ItemID || !bytes.Equal(restored.DeleteToken, deleteToken) {
 		t.Fatal("restored delivery state differs")
+	}
+	pending, err := core.PendingDeliveries(context.Background(), "", 1, now)
+	if err != nil || len(pending) != 1 || pending[0].Item.ItemID != item.ItemID {
+		t.Fatalf("restart did not discover pending delivery: pending=%d err=%v", len(pending), err)
+	}
+	for _, invalidID := range []string{strings.Repeat("z", sha256.Size*2), "A" + strings.Repeat("0", sha256.Size*2-1)} {
+		if _, err := core.LoadDelivery(context.Background(), invalidID, now); err == nil {
+			t.Fatalf("non-canonical delivery ID %q was accepted", invalidID)
+		}
+		if _, err := core.PendingDeliveries(context.Background(), invalidID, 1, now); err == nil {
+			t.Fatalf("non-canonical pagination ID %q was accepted", invalidID)
+		}
 	}
 }

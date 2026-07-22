@@ -6,17 +6,19 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type Config struct {
@@ -29,12 +31,23 @@ type Config struct {
 
 const MaxClientNodes = 64
 
+const (
+	MaxPendingDeliveryPage = 256
+	deliveryAuditStateKey  = "delivery-state"
+)
+
+var (
+	ErrInvalidDeliveryState = errors.New("invalid delivery state")
+	ErrNoAllowedNodes       = errors.New("no non-excluded node is available")
+)
+
 type Core struct {
-	nodes       []*HTTPNode
-	replicas    int
-	writeQuorum int
-	reputation  *Reputation
-	store       ClientStore
+	nodes         []*HTTPNode
+	replicas      int
+	writeQuorum   int
+	reputation    *Reputation
+	store         ClientStore
+	deliveryLocks [64]sync.Mutex
 }
 
 type Delivery struct {
@@ -45,18 +58,40 @@ type Delivery struct {
 }
 
 func New(config Config) (*Core, error) {
+	if config.Store == nil {
+		return nil, errors.New("persistent client store is required")
+	}
+	return newCore(config, false)
+}
+
+// NewEphemeralForDevelopment explicitly opts out of durable repair and delete
+// capability recovery. It is intended only for tests and private development.
+func NewEphemeralForDevelopment(config Config) (*Core, error) {
+	if config.Store != nil {
+		return nil, errors.New("ephemeral development core does not accept a persistent store")
+	}
+	return newCore(config, true)
+}
+
+func newCore(config Config, ephemeral bool) (*Core, error) {
 	if len(config.Nodes) == 0 || len(config.Nodes) > MaxClientNodes {
 		return nil, errors.New("at least one node is required")
 	}
+	if !ephemeral && config.Store == nil {
+		return nil, errors.New("persistent client store is required")
+	}
 	seenNodes := make(map[string]struct{}, len(config.Nodes))
+	nodes := make([]*HTTPNode, 0, len(config.Nodes))
 	for _, candidate := range config.Nodes {
-		if candidate == nil || candidate.Client == nil || !pqcrypto.ValidPublicIdentity(candidate.Identity) {
+		copyNode, err := cloneOperationalHTTPNode(candidate)
+		if err != nil {
 			return nil, errors.New("invalid node descriptor")
 		}
-		if _, duplicate := seenNodes[candidate.Identity.NodeID]; duplicate {
+		if _, duplicate := seenNodes[copyNode.identity.NodeID]; duplicate {
 			return nil, errors.New("duplicate node identity")
 		}
-		seenNodes[candidate.Identity.NodeID] = struct{}{}
+		seenNodes[copyNode.identity.NodeID] = struct{}{}
+		nodes = append(nodes, copyNode)
 	}
 	if config.Replicas <= 0 || config.Replicas > len(config.Nodes) {
 		config.Replicas = len(config.Nodes)
@@ -71,7 +106,7 @@ func New(config Config) (*Core, error) {
 		config.Reputation = NewReputation()
 	}
 	return &Core{
-		nodes:       append([]*HTTPNode(nil), config.Nodes...),
+		nodes:       nodes,
 		replicas:    config.Replicas,
 		writeQuorum: config.WriteQuorum,
 		reputation:  config.Reputation,
@@ -193,6 +228,9 @@ func OpenDirectItem(privateHPKEKey []byte, item protocol.StoredItem) ([]byte, er
 
 func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, deleteToken []byte) (Delivery, error) {
 	now := time.Now().UTC()
+	if c == nil || ctx == nil {
+		return Delivery{}, errors.New("client core and context are required")
+	}
 	if err := protocol.ValidateItem(item, now, protocol.DefaultMaxItemBytes); err != nil {
 		return Delivery{}, err
 	}
@@ -200,11 +238,58 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 		!bytes.Equal(item.DeleteTokenHash, pqcrypto.DeleteTokenHash(deleteToken)) {
 		return Delivery{}, errors.New("delete capability does not match item")
 	}
-	candidates := c.allowedNodes()
-	if len(candidates) < c.writeQuorum {
-		return Delivery{}, errors.New("not enough non-excluded nodes for write quorum")
+	unlock := c.lockDelivery(item.ItemID)
+	defer unlock()
+	return c.storeReplicatedLocked(ctx, item, deleteToken, nil, nil)
+}
+
+func (c *Core) storeReplicatedLocked(
+	ctx context.Context,
+	item protocol.StoredItem,
+	deleteToken []byte,
+	baseState *persistedDeliveryState,
+	countedReceiptNodes map[string]struct{},
+) (Delivery, error) {
+	now := time.Now().UTC()
+	var state persistedDeliveryState
+	if baseState != nil {
+		state = clonePersistedDeliveryState(*baseState)
+	} else if c.store != nil {
+		loaded, err := c.loadDeliveryState(ctx, item.ItemID, now, true)
+		if err == nil {
+			state = loaded
+		} else if !errors.Is(err, ErrLocalRecordNotFound) {
+			return Delivery{}, err
+		}
 	}
-	delivery := Delivery{DeleteToken: append([]byte(nil), deleteToken...), FailedNodes: make(map[string]string)}
+	defer wipeDeliveryState(&state)
+	if err := c.mergeDeliveryIntoState(&state, Delivery{Item: item, DeleteToken: deleteToken}, now); err != nil {
+		return Delivery{}, err
+	}
+	state.Delivery.FailedNodes = make(map[string]string)
+	pruneUnreferencedDeliveryIdentities(&state)
+	if countedReceiptNodes == nil {
+		countedReceiptNodes = make(map[string]struct{}, len(state.Delivery.Receipts))
+		for _, receipt := range state.Delivery.Receipts {
+			countedReceiptNodes[receipt.NodeID] = struct{}{}
+		}
+	} else {
+		countedReceiptNodes = cloneNodeIDSet(countedReceiptNodes)
+	}
+	if len(countedReceiptNodes) >= c.replicas {
+		if err := c.persistDeliveryState(ctx, state, now); err != nil {
+			return cloneDelivery(state.Delivery), err
+		}
+		return cloneDelivery(state.Delivery), nil
+	}
+	candidates := c.allowedNodes()
+	requiredNew := c.writeQuorum - len(countedReceiptNodes)
+	if requiredNew < 1 {
+		requiredNew = 1
+	}
+	if len(candidates) < requiredNew {
+		return cloneDelivery(state.Delivery), errors.New("not enough non-excluded nodes for write quorum")
+	}
 	type nodeParameters struct {
 		node       *HTTPNode
 		parameters protocol.NodeParameters
@@ -230,13 +315,25 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 	for result := range parameterResults {
 		n, parameters, err := result.node, result.parameters, result.err
 		if err != nil {
-			c.reputation.Failure(n.Identity.NodeID, err)
-			delivery.FailedNodes[n.Identity.NodeID] = err.Error()
+			if localContextTermination(ctx, err) {
+				return cloneDelivery(state.Delivery), ctx.Err()
+			}
+			c.reputation.Failure(n.identity.NodeID, err)
+			if identityErr := addDeliveryIdentity(&state, n.identity); identityErr != nil {
+				return cloneDelivery(state.Delivery), identityErr
+			}
+			state.Delivery.FailedNodes[n.identity.NodeID] = boundedDeliveryFailure(err)
 			continue
 		}
 		if len(item.Payload) > parameters.MaxItemBytes {
 			err := errors.New("item violates node limits")
-			delivery.FailedNodes[n.Identity.NodeID] = err.Error()
+			if identityErr := addDeliveryIdentity(&state, n.identity); identityErr != nil {
+				return cloneDelivery(state.Delivery), identityErr
+			}
+			state.Delivery.FailedNodes[n.identity.NodeID] = boundedDeliveryFailure(err)
+			continue
+		}
+		if _, alreadyCounted := countedReceiptNodes[n.identity.NodeID]; alreadyCounted {
 			continue
 		}
 		groups[parameters.EpochSeconds] = append(groups[parameters.EpochSeconds], nodeParameters{node: n, parameters: parameters})
@@ -245,24 +342,26 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 	var epochSeconds int64
 	var selectedThreshold uint8
 	for epoch, group := range groups {
-		if len(group) < c.writeQuorum {
+		if len(group) < requiredNew {
 			continue
 		}
 		sort.Slice(group, func(i, j int) bool {
 			if group[i].parameters.Difficulty == group[j].parameters.Difficulty {
-				return group[i].node.Identity.NodeID < group[j].node.Identity.NodeID
+				return group[i].node.identity.NodeID < group[j].node.identity.NodeID
 			}
 			return group[i].parameters.Difficulty < group[j].parameters.Difficulty
 		})
-		threshold := group[c.writeQuorum-1].parameters.Difficulty
-		if len(group) > len(selected) || (len(group) == len(selected) && (selected == nil || threshold < selectedThreshold)) {
+		threshold := group[requiredNew-1].parameters.Difficulty
+		if len(group) > len(selected) ||
+			(len(group) == len(selected) && (selected == nil || threshold < selectedThreshold ||
+				(threshold == selectedThreshold && epoch < epochSeconds))) {
 			selected = group
 			epochSeconds = epoch
 			selectedThreshold = threshold
 		}
 	}
-	if len(selected) < c.writeQuorum {
-		return Delivery{}, errors.New("could not obtain node parameters")
+	if len(selected) < requiredNew {
+		return cloneDelivery(state.Delivery), errors.New("could not obtain node parameters")
 	}
 	usable := make([]*HTTPNode, 0, len(selected))
 	for _, candidate := range selected {
@@ -270,20 +369,35 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 			usable = append(usable, candidate.node)
 		}
 	}
+	if len(usable) < requiredNew {
+		return cloneDelivery(state.Delivery), errors.New("could not obtain enough independent node parameters")
+	}
 	work, err := protocol.SolveWork(ctx, item, epochSeconds, selectedThreshold)
 	if err != nil {
-		return Delivery{}, err
+		return cloneDelivery(state.Delivery), err
 	}
 	item.Work = work
-	delivery.Item = item
+	state.Delivery.Item = cloneStoredItem(item)
 
 	type result struct {
 		node    *HTTPNode
 		receipt protocol.StorageReceipt
 		err     error
 	}
-	primaryCount := min(c.replicas, len(usable))
+	neededReplicas := c.replicas - len(countedReceiptNodes)
+	primaryCount := min(neededReplicas, len(usable))
 	primary := usable[:primaryCount]
+	// Persist both the capability and every potential target before launching
+	// concurrent Store calls. A crash or lost response can therefore be safely
+	// recovered even when no receipt reached the caller.
+	for _, node := range primary {
+		if err := addDeliveryAttempt(&state, node.identity); err != nil {
+			return cloneDelivery(state.Delivery), err
+		}
+	}
+	if err := c.persistDeliveryState(ctx, state, time.Now().UTC()); err != nil {
+		return cloneDelivery(state.Delivery), fmt.Errorf("persist pending delivery before store: %w", err)
+	}
 	results := make(chan result, len(primary))
 	var wg sync.WaitGroup
 	for _, n := range primary {
@@ -298,41 +412,59 @@ func (c *Core) StoreReplicated(ctx context.Context, item protocol.StoredItem, de
 	close(results)
 	for result := range results {
 		if result.err != nil {
-			c.reputation.Failure(result.node.Identity.NodeID, result.err)
-			delivery.FailedNodes[result.node.Identity.NodeID] = result.err.Error()
+			if localContextTermination(ctx, result.err) {
+				return cloneDelivery(state.Delivery), ctx.Err()
+			}
+			c.reputation.Failure(result.node.identity.NodeID, result.err)
+			state.Delivery.FailedNodes[result.node.identity.NodeID] = boundedDeliveryFailure(result.err)
 			continue
 		}
-		c.reputation.Success(result.node.Identity.NodeID, false)
-		delivery.Receipts = append(delivery.Receipts, result.receipt)
+		if err := addDeliveryReceipt(&state, result.node.identity, result.receipt, time.Now().UTC()); err != nil {
+			return cloneDelivery(state.Delivery), err
+		}
+		if err := c.persistDeliveryState(ctx, state, time.Now().UTC()); err != nil {
+			return cloneDelivery(state.Delivery), fmt.Errorf("persist storage receipt: %w", err)
+		}
+		c.reputation.Success(result.node.identity.NodeID, false)
+		countedReceiptNodes[result.node.identity.NodeID] = struct{}{}
 	}
 	// Failed primary nodes are replaced by later candidates. This is the core
 	// repair behavior: a signed receipt is required before a replica counts.
 	for _, n := range usable[primaryCount:] {
-		if len(delivery.Receipts) >= c.replicas {
+		if len(countedReceiptNodes) >= c.replicas {
 			break
+		}
+		if err := addDeliveryAttempt(&state, n.identity); err != nil {
+			return cloneDelivery(state.Delivery), err
+		}
+		if err := c.persistDeliveryState(ctx, state, time.Now().UTC()); err != nil {
+			return cloneDelivery(state.Delivery), fmt.Errorf("persist pending replacement before store: %w", err)
 		}
 		receipt, err := n.Store(ctx, item)
 		if err != nil {
-			c.reputation.Failure(n.Identity.NodeID, err)
-			delivery.FailedNodes[n.Identity.NodeID] = err.Error()
+			if localContextTermination(ctx, err) {
+				return cloneDelivery(state.Delivery), ctx.Err()
+			}
+			c.reputation.Failure(n.identity.NodeID, err)
+			state.Delivery.FailedNodes[n.identity.NodeID] = boundedDeliveryFailure(err)
 			continue
 		}
-		c.reputation.Success(n.Identity.NodeID, false)
-		delivery.Receipts = append(delivery.Receipts, receipt)
-	}
-	if len(delivery.Receipts) < c.writeQuorum {
-		writeErr := fmt.Errorf("write quorum not reached: got %d of %d receipts", len(delivery.Receipts), c.writeQuorum)
-		if len(delivery.Receipts) > 0 {
-			if persistErr := c.persistDelivery(ctx, delivery, time.Now().UTC()); persistErr != nil {
-				writeErr = errors.Join(writeErr, persistErr)
-			}
+		if err := addDeliveryReceipt(&state, n.identity, receipt, time.Now().UTC()); err != nil {
+			return cloneDelivery(state.Delivery), err
 		}
-		return delivery, writeErr
+		if err := c.persistDeliveryState(ctx, state, time.Now().UTC()); err != nil {
+			return cloneDelivery(state.Delivery), fmt.Errorf("persist replacement receipt: %w", err)
+		}
+		c.reputation.Success(n.identity.NodeID, false)
+		countedReceiptNodes[n.identity.NodeID] = struct{}{}
 	}
-	if err := c.persistDelivery(ctx, delivery, time.Now().UTC()); err != nil {
-		return delivery, fmt.Errorf("persist delivery state: %w", err)
+	if err := c.persistDeliveryState(ctx, state, time.Now().UTC()); err != nil {
+		return cloneDelivery(state.Delivery), fmt.Errorf("persist delivery state: %w", err)
 	}
-	return delivery, nil
+	if len(countedReceiptNodes) < c.writeQuorum {
+		return cloneDelivery(state.Delivery), fmt.Errorf("write quorum not reached: got %d of %d receipts", len(countedReceiptNodes), c.writeQuorum)
+	}
+	return cloneDelivery(state.Delivery), nil
 }
 
 func (c *Core) Fetch(ctx context.Context, routeTags []string) ([]protocol.StoredItem, error) {
@@ -349,93 +481,181 @@ func (c *Core) Fetch(ctx context.Context, routeTags []string) ([]protocol.Stored
 		}
 		requested[routeTag] = struct{}{}
 	}
-	seen := make(map[string]protocol.StoredItem)
-	var totalBytes int64
+	type nodeFetch struct {
+		nodeID string
+		items  []protocol.StoredItem
+	}
+	nodes := c.allowedNodes()
+	if len(nodes) == 0 {
+		return nil, ErrNoAllowedNodes
+	}
+	// Node order is configuration-dependent. Sort it before both collection and
+	// fair merge so the same signed responses always produce the same result.
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].identity.NodeID < nodes[j].identity.NodeID })
+	responses := make([]nodeFetch, 0, len(nodes))
 	var lastErr error
-	var successfulFetch bool
-	for _, n := range c.allowedNodes() {
+	now := time.Now().UTC()
+	for _, n := range nodes {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		items, err := n.Fetch(ctx, routeTags)
 		if err != nil {
-			c.reputation.Failure(n.Identity.NodeID, err)
+			if localContextTermination(ctx, err) {
+				return nil, ctx.Err()
+			}
+			c.reputation.Failure(n.identity.NodeID, err)
 			lastErr = err
 			continue
 		}
-		responseValid := true
+		responseValid := len(items) <= protocol.DefaultMaxFetchItems
+		responseItems := make(map[string]protocol.StoredItem, len(items))
+		var responseBytes int64
 		if len(items) > protocol.DefaultMaxFetchItems {
-			lastErr = errors.New("node returned too many fetch items")
-			c.reputation.Failure(n.Identity.NodeID, lastErr)
-			continue
+			responseValid = false
 		}
 		for _, item := range items {
 			if _, asked := requested[item.RouteTag]; !asked ||
-				protocol.ValidateItem(item, time.Now(), protocol.DefaultMaxItemBytes) != nil {
+				protocol.ValidateItem(item, now, protocol.DefaultMaxItemBytes) != nil {
 				responseValid = false
+			}
+			responseBytes += int64(len(item.Payload))
+			if responseBytes > protocol.DefaultMaxFetchBytes {
+				responseValid = false
+			}
+			if _, duplicate := responseItems[item.ItemID]; duplicate {
+				responseValid = false
+			} else {
+				responseItems[item.ItemID] = item
+			}
+		}
+		if !responseValid {
+			lastErr = ErrInvalidNodeResponse
+			c.reputation.Failure(n.identity.NodeID, lastErr)
+			continue
+		}
+		items = items[:0]
+		for _, item := range responseItems {
+			items = append(items, item)
+		}
+		sort.Slice(items, func(i, j int) bool {
+			if !items[i].CreatedAt.Equal(items[j].CreatedAt) {
+				return items[i].CreatedAt.Before(items[j].CreatedAt)
+			}
+			return items[i].ItemID < items[j].ItemID
+		})
+		responses = append(responses, nodeFetch{nodeID: n.identity.NodeID, items: items})
+	}
+	if len(responses) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	sort.Slice(responses, func(i, j int) bool { return responses[i].nodeID < responses[j].nodeID })
+
+	// Merge one candidate per successful node and round. The retained response
+	// slices are each independently bounded by HTTPNode.Fetch, and the emitted
+	// union is bounded before every append. This prevents a valid but
+	// budget-filling response from crowding every other node out.
+	result := make([]protocol.StoredItem, 0, protocol.DefaultMaxFetchItems)
+	seen := make(map[string]struct{}, protocol.DefaultMaxFetchItems)
+	indexes := make([]int, len(responses))
+	var resultBytes int64
+	for len(result) < protocol.DefaultMaxFetchItems {
+		hadCandidate := false
+		for responseIndex := range responses {
+			itemIndex := indexes[responseIndex]
+			if itemIndex >= len(responses[responseIndex].items) {
 				continue
 			}
-			if _, duplicate := seen[item.ItemID]; !duplicate {
-				if len(seen) >= protocol.DefaultMaxFetchItems {
-					return nil, errors.New("combined fetch result exceeds item limit")
-				}
-				if totalBytes+int64(len(item.Payload)) > protocol.DefaultMaxFetchBytes {
-					return nil, errors.New("combined fetch result exceeds size limit")
-				}
-				seen[item.ItemID] = item
-				totalBytes += int64(len(item.Payload))
+			hadCandidate = true
+			item := responses[responseIndex].items[itemIndex]
+			indexes[responseIndex]++
+			if _, duplicate := seen[item.ItemID]; duplicate {
+				continue
+			}
+			seen[item.ItemID] = struct{}{}
+			itemBytes := int64(len(item.Payload))
+			if resultBytes+itemBytes > protocol.DefaultMaxFetchBytes {
+				continue
+			}
+			result = append(result, item)
+			resultBytes += itemBytes
+			if len(result) == protocol.DefaultMaxFetchItems {
+				break
 			}
 		}
-		if responseValid {
-			successfulFetch = true
-		} else {
-			lastErr = errors.New("node returned an invalid fetch item")
-			c.reputation.Failure(n.Identity.NodeID, lastErr)
+		if !hadCandidate {
+			break
 		}
-	}
-	result := make([]protocol.StoredItem, 0, len(seen))
-	for _, item := range seen {
-		result = append(result, item)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
-	if !successfulFetch && lastErr != nil {
-		return nil, lastErr
 	}
 	return result, nil
 }
 
+func localContextTermination(ctx context.Context, err error) bool {
+	return ctx != nil && ctx.Err() != nil && errors.Is(err, ctx.Err())
+}
+
 func (c *Core) Audit(ctx context.Context, delivery Delivery) map[string]error {
 	results := make(map[string]error)
-	payloadHash := sha256.Sum256(delivery.Item.Payload)
-	for _, receipt := range delivery.Receipts {
+	if c == nil || ctx == nil || !validItemID(delivery.Item.ItemID) {
+		results[deliveryAuditStateKey] = ErrInvalidDeliveryState
+		return results
+	}
+	unlock := c.lockDelivery(delivery.Item.ItemID)
+	defer unlock()
+	now := time.Now().UTC()
+	state, err := c.deliveryStateForOperationLocked(ctx, delivery, now, true)
+	if err != nil {
+		results[deliveryAuditStateKey] = err
+		return results
+	}
+	defer wipeDeliveryState(&state)
+	return c.auditDeliveryState(ctx, state)
+}
+
+func (c *Core) auditDeliveryState(ctx context.Context, state persistedDeliveryState) map[string]error {
+	results := make(map[string]error)
+	if len(state.Delivery.Receipts) < c.replicas {
+		results[deliveryAuditStateKey] = ErrInvalidDeliveryState
+	}
+	payloadHash := sha256.Sum256(state.Delivery.Item.Payload)
+	identities := deliveryIdentityMap(state)
+	for _, receipt := range state.Delivery.Receipts {
 		n := c.nodeByID(receipt.NodeID)
-		if n == nil {
+		if n == nil || !sameNodeIdentity(n.identity, identities[receipt.NodeID]) {
+			results[receipt.NodeID] = ErrDeliveryNodeUnavailable
 			continue
 		}
 		nonce := make([]byte, 32)
 		if _, err := rand.Read(nonce); err != nil {
-			results[n.Identity.NodeID] = err
+			results[n.identity.NodeID] = err
 			continue
 		}
-		sampleLength := min(4096, len(delivery.Item.Payload))
-		offset, err := randomProofOffset(rand.Reader, len(delivery.Item.Payload), sampleLength)
+		sampleLength := min(4096, len(state.Delivery.Item.Payload))
+		offset, err := randomProofOffset(rand.Reader, len(state.Delivery.Item.Payload), sampleLength)
 		if err != nil {
-			results[n.Identity.NodeID] = err
+			results[n.identity.NodeID] = err
 			continue
 		}
-		request := protocol.ProofRequest{ItemID: delivery.Item.ItemID, Nonce: nonce, Offset: offset, Length: sampleLength}
+		request := protocol.ProofRequest{ItemID: state.Delivery.Item.ItemID, Nonce: nonce, Offset: offset, Length: sampleLength}
 		proof, err := n.Prove(ctx, request)
+		if localContextTermination(ctx, err) {
+			results[n.identity.NodeID] = ctx.Err()
+			continue
+		}
 		if err == nil {
 			end := offset + int64(len(proof.Sample))
-			if end > int64(len(delivery.Item.Payload)) || !bytes.Equal(proof.Sample, delivery.Item.Payload[offset:end]) || !bytes.Equal(proof.PayloadHash, payloadHash[:]) {
+			if end > int64(len(state.Delivery.Item.Payload)) || !bytes.Equal(proof.Sample, state.Delivery.Item.Payload[offset:end]) || !bytes.Equal(proof.PayloadHash, payloadHash[:]) {
 				err = errors.New("node returned incorrect stored bytes")
-				c.reputation.Exclude(n.Identity.NodeID, 24*time.Hour, err)
+				c.reputation.Exclude(n.identity.NodeID, 24*time.Hour, err)
 			}
 		}
-		results[n.Identity.NodeID] = err
+		results[n.identity.NodeID] = err
 		if err != nil {
-			if c.reputation.Allowed(n.Identity.NodeID, time.Now()) {
-				c.reputation.Failure(n.Identity.NodeID, err)
+			if c.reputation.Allowed(n.identity.NodeID, time.Now()) {
+				c.reputation.Failure(n.identity.NodeID, err)
 			}
 		} else {
-			c.reputation.Success(n.Identity.NodeID, true)
+			c.reputation.Success(n.identity.NodeID, true)
 		}
 	}
 	return results
@@ -458,50 +678,83 @@ func randomProofOffset(reader io.Reader, payloadBytes, sampleBytes int) (int64, 
 
 // AuditAndRepair verifies each acknowledged replica and rewrites the same
 // ciphertext to replacement nodes when any replica no longer proves storage.
-// The caller must persist the returned Delivery because it contains the new
-// receipt set and a fresh proof-of-work epoch.
+// Valid old receipts are retained and merged with new repair receipts. The
+// operation is serialized per item and the merged state is persisted before
+// any repair Store request is sent.
 func (c *Core) AuditAndRepair(ctx context.Context, delivery Delivery) (Delivery, map[string]error, error) {
-	audit := c.Audit(ctx, delivery)
-	needsRepair := false
-	for _, err := range audit {
-		if err != nil {
-			needsRepair = true
-			break
+	if c == nil || ctx == nil || !validItemID(delivery.Item.ItemID) {
+		audit := map[string]error{deliveryAuditStateKey: ErrInvalidDeliveryState}
+		return Delivery{}, audit, ErrInvalidDeliveryState
+	}
+	unlock := c.lockDelivery(delivery.Item.ItemID)
+	defer unlock()
+	state, err := c.deliveryStateForOperationLocked(ctx, delivery, time.Now().UTC(), true)
+	if err != nil {
+		audit := map[string]error{deliveryAuditStateKey: err}
+		return Delivery{}, audit, err
+	}
+	defer wipeDeliveryState(&state)
+	audit := c.auditDeliveryState(ctx, state)
+	counted := make(map[string]struct{}, len(state.Delivery.Receipts))
+	for _, receipt := range state.Delivery.Receipts {
+		if audit[receipt.NodeID] == nil {
+			counted[receipt.NodeID] = struct{}{}
 		}
 	}
-	if !needsRepair {
-		return delivery, audit, nil
+	if len(counted) >= c.replicas && audit[deliveryAuditStateKey] == nil {
+		return cloneDelivery(state.Delivery), audit, nil
 	}
-	repaired, err := c.StoreReplicated(ctx, delivery.Item, delivery.DeleteToken)
-	return repaired, audit, err
+	repaired, repairErr := c.storeReplicatedLocked(ctx, state.Delivery.Item, state.Delivery.DeleteToken, &state, counted)
+	return repaired, audit, repairErr
 }
 
 func (c *Core) Delete(ctx context.Context, delivery Delivery) map[string]error {
 	results := make(map[string]error)
-	if len(delivery.DeleteToken) != protocol.CapabilityBytes ||
-		!bytes.Equal(delivery.Item.DeleteTokenHash, pqcrypto.DeleteTokenHash(delivery.DeleteToken)) {
-		err := errors.New("invalid delete capability")
-		for _, receipt := range delivery.Receipts {
-			results[receipt.NodeID] = err
-		}
+	if c == nil || ctx == nil || !validItemID(delivery.Item.ItemID) {
+		results[deliveryAuditStateKey] = ErrInvalidDeliveryState
 		return results
 	}
-	allDeleted := len(delivery.Receipts) > 0
-	for _, receipt := range delivery.Receipts {
-		n := c.nodeByID(receipt.NodeID)
-		if n == nil {
+	unlock := c.lockDelivery(delivery.Item.ItemID)
+	defer unlock()
+	state, err := c.deliveryStateForOperationLocked(ctx, delivery, time.Now().UTC(), true)
+	if err != nil {
+		results[deliveryAuditStateKey] = err
+		return results
+	}
+	defer wipeDeliveryState(&state)
+	identities := deliveryIdentityMap(state)
+	targets := deliveryTargetNodeIDs(state)
+	allDeleted := len(targets) > 0
+	for _, nodeID := range targets {
+		n := c.nodeByID(nodeID)
+		if n == nil || !sameNodeIdentity(n.identity, identities[nodeID]) {
+			results[nodeID] = ErrDeliveryNodeUnavailable
 			allDeleted = false
 			continue
 		}
-		_, err := n.Delete(ctx, protocol.DeleteRequest{ItemID: delivery.Item.ItemID, DeleteToken: delivery.DeleteToken})
-		results[n.Identity.NodeID] = err
+		_, err := n.Delete(ctx, protocol.DeleteRequest{ItemID: state.Delivery.Item.ItemID, DeleteToken: state.Delivery.DeleteToken})
+		results[n.identity.NodeID] = err
 		if err != nil {
 			allDeleted = false
-			c.reputation.Failure(n.Identity.NodeID, err)
+			if !localContextTermination(ctx, err) {
+				c.reputation.Failure(n.identity.NodeID, err)
+			}
 		}
 	}
 	if allDeleted && c.store != nil {
-		if err := c.store.Delete(ctx, deliveryRecordID(delivery.Item.ItemID)); err != nil && !errors.Is(err, ErrLocalRecordNotFound) {
+		latest, err := c.loadDeliveryState(ctx, state.Delivery.Item.ItemID, time.Now().UTC(), true)
+		if err != nil {
+			results["local-client-store"] = err
+			return results
+		}
+		defer wipeDeliveryState(&latest)
+		if !sameReceiptSet(state.Delivery.Receipts, latest.Delivery.Receipts) ||
+			!sameStringSlice(deliveryTargetNodeIDs(state), deliveryTargetNodeIDs(latest)) ||
+			!bytes.Equal(state.Delivery.DeleteToken, latest.Delivery.DeleteToken) {
+			results["local-client-store"] = ErrDeliveryStateChanged
+			return results
+		}
+		if err := c.store.Delete(ctx, deliveryRecordID(state.Delivery.Item.ItemID)); err != nil && !errors.Is(err, ErrLocalRecordNotFound) {
 			results["local-client-store"] = err
 		}
 	}
@@ -510,16 +763,16 @@ func (c *Core) Delete(ctx context.Context, delivery Delivery) map[string]error {
 
 func (c *Core) DeleteItemEverywhere(ctx context.Context, itemID string, deleteToken []byte) map[string]error {
 	results := make(map[string]error)
-	if len(deleteToken) != protocol.CapabilityBytes || len(itemID) != sha256.Size*2 {
+	if len(deleteToken) != protocol.CapabilityBytes || !validItemID(itemID) {
 		err := errors.New("invalid delete request")
 		for _, n := range c.nodes {
-			results[n.Identity.NodeID] = err
+			results[n.identity.NodeID] = err
 		}
 		return results
 	}
 	for _, n := range c.nodes {
 		_, err := n.Delete(ctx, protocol.DeleteRequest{ItemID: itemID, DeleteToken: deleteToken})
-		results[n.Identity.NodeID] = err
+		results[n.identity.NodeID] = err
 	}
 	return results
 }
@@ -528,7 +781,7 @@ func (c *Core) allowedNodes() []*HTTPNode {
 	now := time.Now()
 	result := make([]*HTTPNode, 0, len(c.nodes))
 	for _, n := range c.nodes {
-		if c.reputation.Allowed(n.Identity.NodeID, now) {
+		if c.reputation.Allowed(n.identity.NodeID, now) {
 			result = append(result, n)
 		}
 	}
@@ -537,7 +790,7 @@ func (c *Core) allowedNodes() []*HTTPNode {
 
 func (c *Core) nodeByID(nodeID string) *HTTPNode {
 	for _, n := range c.nodes {
-		if n.Identity.NodeID == nodeID {
+		if n.identity.NodeID == nodeID {
 			return n
 		}
 	}
@@ -552,74 +805,92 @@ func (c *Core) persistDelivery(ctx context.Context, delivery Delivery, now time.
 	if c.store == nil {
 		return nil
 	}
-	encoded, err := json.Marshal(delivery)
+	if ctx == nil || !validItemID(delivery.Item.ItemID) || now.IsZero() {
+		return ErrInvalidDeliveryState
+	}
+	unlock := c.lockDelivery(delivery.Item.ItemID)
+	defer unlock()
+	state, err := c.deliveryStateForOperationLocked(ctx, delivery, now, false)
 	if err != nil {
 		return err
 	}
-	defer zero(encoded)
-	updatedAt := now
-	if updatedAt.Before(delivery.Item.CreatedAt) {
-		updatedAt = delivery.Item.CreatedAt
-	}
-	_, err = c.store.Put(ctx, LocalRecord{
-		Version: ClientStoreVersion, ID: deliveryRecordID(delivery.Item.ItemID), Kind: LocalKindDelivery,
-		CreatedAt: delivery.Item.CreatedAt, UpdatedAt: updatedAt, ExpiresAt: delivery.Item.ExpiresAt,
-		PrunePolicy: PruneAfterExpiry, Payload: encoded,
-	}, now)
-	return err
+	defer wipeDeliveryState(&state)
+	return c.persistDeliveryState(ctx, state, now)
 }
 
 // LoadDelivery restores authenticated repair/deletion state after a restart.
 // The encrypted local record and every hybrid node receipt are verified again
 // before the delete capability is returned to the caller.
 func (c *Core) LoadDelivery(ctx context.Context, itemID string, now time.Time) (Delivery, error) {
-	if c == nil || c.store == nil || len(itemID) != sha256.Size*2 || now.IsZero() {
-		return Delivery{}, errors.New("persistent client store is unavailable")
-	}
-	record, err := c.store.Get(ctx, deliveryRecordID(itemID))
+	state, err := c.loadDeliveryState(ctx, itemID, now, true)
 	if err != nil {
 		return Delivery{}, err
 	}
-	defer zero(record.Payload)
-	if record.Version != ClientStoreVersion || record.ID != deliveryRecordID(itemID) ||
-		record.Kind != LocalKindDelivery || record.PrunePolicy != PruneAfterExpiry {
-		return Delivery{}, errors.New("invalid persisted delivery record")
+	defer wipeDeliveryState(&state)
+	return cloneDelivery(state.Delivery), nil
+}
+
+// PendingDeliveries returns one bounded, stable page of persisted delivery
+// state. Passing the final ItemID from the previous page resumes after it, so a
+// restarted client can discover repair and deletion capabilities without
+// already knowing every item identifier.
+func (c *Core) PendingDeliveries(ctx context.Context, afterItemID string, limit int, now time.Time) ([]Delivery, error) {
+	if c == nil || c.store == nil || ctx == nil || now.IsZero() || limit <= 0 || limit > MaxPendingDeliveryPage ||
+		(afterItemID != "" && !validItemID(afterItemID)) {
+		return nil, errors.New("invalid pending delivery listing")
 	}
-	var delivery Delivery
-	wipeDelivery := func() {
-		zero(delivery.DeleteToken)
-		zero(delivery.Item.Payload)
+	scanAfter := ""
+	if afterItemID != "" {
+		scanAfter = deliveryRecordID(afterItemID)
 	}
-	if err := decodeStrictJSON(record.Payload, &delivery); err != nil {
-		wipeDelivery()
-		return Delivery{}, err
-	}
-	if delivery.Item.ItemID != itemID ||
-		protocol.ValidateItem(delivery.Item, now, protocol.DefaultMaxItemBytes) != nil ||
-		!record.CreatedAt.Equal(delivery.Item.CreatedAt) || !record.ExpiresAt.Equal(delivery.Item.ExpiresAt) ||
-		len(delivery.DeleteToken) != protocol.CapabilityBytes ||
-		!bytes.Equal(delivery.Item.DeleteTokenHash, pqcrypto.DeleteTokenHash(delivery.DeleteToken)) {
-		wipeDelivery()
-		return Delivery{}, errors.New("invalid persisted delivery state")
-	}
-	seen := make(map[string]struct{}, len(delivery.Receipts))
-	for _, receipt := range delivery.Receipts {
-		node := c.nodeByID(receipt.NodeID)
-		if node == nil {
-			wipeDelivery()
-			return Delivery{}, errors.New("persisted receipt references an unknown node")
+	deliveries := make([]Delivery, 0, limit)
+	scanned := 0
+	for {
+		ids, err := c.store.ListIDs(ctx, LocalKindDelivery, scanAfter, MaxPendingDeliveryPage)
+		if err != nil {
+			return nil, err
 		}
-		if _, duplicate := seen[receipt.NodeID]; duplicate {
-			wipeDelivery()
-			return Delivery{}, errors.New("persisted delivery contains duplicate receipts")
+		if len(ids) > MaxPendingDeliveryPage {
+			return nil, errors.New("invalid persisted delivery index page size")
 		}
-		seen[receipt.NodeID] = struct{}{}
-		if err := verifyStorageReceipt(node.Identity, delivery.Item, receipt, now); err != nil {
-			wipeDelivery()
-			return Delivery{}, err
+		previous := scanAfter
+		for _, id := range ids {
+			if id <= previous || !strings.HasPrefix(id, "delivery.") ||
+				!validItemID(strings.TrimPrefix(id, "delivery.")) {
+				return nil, errors.New("invalid persisted delivery index")
+			}
+			previous = id
 		}
+		for _, id := range ids {
+			scanned++
+			if scanned > MaxClientStoreRecords {
+				return nil, errors.New("persisted delivery index exceeds record bound")
+			}
+			itemID := strings.TrimPrefix(id, "delivery.")
+			state, loadErr := c.loadDeliveryState(ctx, itemID, now, false)
+			if errors.Is(loadErr, ErrLocalRecordNotFound) {
+				continue
+			}
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			active := state.Delivery.Item.ExpiresAt.After(now)
+			if active {
+				deliveries = append(deliveries, cloneDelivery(state.Delivery))
+			}
+			wipeDeliveryState(&state)
+			if len(deliveries) == limit {
+				return deliveries, nil
+			}
+		}
+		if len(ids) < MaxPendingDeliveryPage {
+			return deliveries, nil
+		}
+		if previous == scanAfter {
+			return nil, errors.New("persisted delivery index did not advance")
+		}
+		scanAfter = previous
 	}
-	return delivery, nil
 }
 
 func (c *Core) ClientStorageUsage() (ClientStorageUsage, bool) {
@@ -661,4 +932,12 @@ func decodeStrictJSON(data []byte, destination any) error {
 		return errors.New("JSON input must contain exactly one value")
 	}
 	return nil
+}
+
+func validItemID(itemID string) bool {
+	if len(itemID) != sha256.Size*2 {
+		return false
+	}
+	decoded, err := hex.DecodeString(itemID)
+	return err == nil && len(decoded) == sha256.Size && hex.EncodeToString(decoded) == itemID
 }

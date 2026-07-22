@@ -12,3 +12,17 @@ func lockNodeStoreFile(*os.File) error {
 }
 
 func unlockNodeStoreFile(*os.File) error { return nil }
+
+func lockNodeKeyFile(*os.File) error {
+	return errors.New("node signing key locking is unsupported on this platform")
+}
+
+func tryLockNodeKeyFile(*os.File) error {
+	return errors.New("node signing key locking is unsupported on this platform")
+}
+
+func unlockNodeKeyFile(*os.File) error { return nil }
+
+func syncPrivateDirectory(string) error {
+	return errors.New("node private-directory synchronization is unsupported on this platform")
+}

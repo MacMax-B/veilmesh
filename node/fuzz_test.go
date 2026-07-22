@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 func FuzzRequestJSONDecoder(f *testing.F) {

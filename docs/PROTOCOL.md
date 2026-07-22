@@ -29,8 +29,10 @@ gültige Ed25519- und ML-DSA-65-Signaturen.
 
 Route-Tags sind exakt 32 zufällige Bytes in ungepaddetem Base64url. Fetches sind
 auf 256 unterschiedliche Tags sowie 512 Items beziehungsweise 8 MiB
-Ciphertext begrenzt. Eine Überschreitung liefert einen Fehler statt einer still
-abgeschnittenen Antwort.
+Ciphertext begrenzt. Eine einzelne übergroße oder ungültige Node-Antwort wird
+verworfen. Mehrere gültige Replikat-Antworten werden in stabiler Node-ID-
+Reihenfolge round-robin dedupliziert und innerhalb derselben globalen Grenzen
+fair abgeschnitten.
 
 ## ENIG-Identitäten und öffentliche Profile
 
@@ -43,7 +45,7 @@ domänenseparierten SHA-256-Digest:
   kanonische Genesis-Policy.
 
 Ein Account-Profil enthält Account-ID/-Public-Key, monotone Revision,
-Aktualisierungszeit und höchstens 32 sortierte, account-signierte
+Aktualisierungszeit und höchstens 27 sortierte, account-signierte
 Gerätezertifikate. Das gesamte Profil ist nochmals vom Account hybrid signiert.
 Parser lehnen unbekannte Felder, nachgestellte JSON-Werte, falsche Typ-Präfixe,
 unsortierte/duplizierte Geräte und Profile über 256 KiB ab.
@@ -60,6 +62,17 @@ Ein Client-Zustellbeleg bindet Message-ID, SHA-256 des vollständigen signierten
 Nachrichtenobjekts, beide Konten, Empfängergerät und Empfangszeit. Er wird vom
 Empfängergerät hybrid signiert und ebenfalls nur im Ratchet transportiert. Er
 ist nicht mit einem Node-Speicherbeleg gleichzusetzen und behauptet kein Lesen.
+
+## Geräte-Sync
+
+Ein Sync-Ereignis wird separat für jedes aktive Empfängergerät hybrid
+verschlüsselt. Der Sender signiert Ereignis-ID, Konto, Sendergerät, exakte
+aktuelle Profilrevision, Erstellungs-/Ablaufzeit und die vollständige Liste der
+Empfänger-Ciphertexte. Empfänger prüfen das aktuelle hybrid signierte Profil,
+einen lokalen Mindest-Revisions-Pin, aktive Gerätezertifikate und beide
+Signaturen, bevor sie entschlüsseln. Die Ereignis-ID wird anschließend atomar
+in einem persistenten Replay-Store reserviert; ein flüchtiger Replay-Cache ist
+keine produktive Implementierung.
 
 ## ENIG-Mix v2
 
@@ -152,14 +165,22 @@ Der Client sendet nur `SHA-256(delete_token)` mit dem Item. Das zufällige Token
 bleibt im Ende-zu-Ende-verschlüsselten Clientzustand. Eine Löschanfrage enthält
 das Token; die Node vergleicht den Hash in konstanter Zeit.
 
+Nach erfolgreicher Authentifizierung ersetzt die Referenznode das Item atomar
+durch einen Tombstone, der Item-ID, Token-Hash, Löschzeit und ursprünglichen
+Ablauf bindet. Bis zu diesem Ablauf sind wiederholte Requests mit demselben
+Token idempotent erfolgreich; ein anderes Token bleibt abgewiesen. Der
+Tombstone ist eine lokale Crash-Recovery-Regel und kein Beweis, dass eine böse
+Node keine geheime Kopie behält.
+
 `GET` beziehungsweise Fetch löscht niemals automatisch. Sonst könnte ein
 Angreifer fremde Nachrichten allein durch Abrufen vernichten.
 
 Eine Fetch-Anfrage enthält höchstens 256 eindeutige, kanonisch kodierte
 Route-Capabilities. Antworten sind auf höchstens 512 Items und 8 MiB
 Ciphertext-Nutzdaten begrenzt. Der Client erzwingt dieselben Grenzen zusätzlich
-über die zusammengeführte Sicht aller Replikate. Dateien mit mehr Blöcken oder
-Bytes werden in mehreren unabhängigen, begrenzten Fetches rekonstruiert; erst
+über eine deterministische, Node-faire zusammengeführte Sicht aller Replikate.
+Dateien mit mehr Blöcken oder Bytes werden in mehreren unabhängigen, begrenzten
+Fetches rekonstruiert; erst
 die vollständig erfolgreiche Hash- und AEAD-Prüfung kann eine separate
 Löschrunde auslösen.
 

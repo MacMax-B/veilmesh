@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"propagare/client"
-	"propagare/nodedir"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/client"
+	"github.com/MacMax-B/propagare/nodedir"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 func testServer(t *testing.T, mutate func(*Config)) (*Server, *DiskStore) {
@@ -115,6 +115,20 @@ func TestProofRejectsTruncatedSampleWindow(t *testing.T) {
 	})
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("truncated proof window returned %d", response.Code)
+	}
+}
+
+func TestProofReportsStoreFailureAsInternalError(t *testing.T) {
+	server, store := testServer(t, nil)
+	item := storedTestItem(t, mustRouteTag(t), []byte("ciphertext"))
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response := postJSON(t, server.Handler(), "/v1/proof", protocol.ProofRequest{
+		ItemID: item.ItemID, Nonce: bytes.Repeat([]byte{2}, 32), Offset: 0, Length: 1,
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("closed store proof returned %d, want %d", response.Code, http.StatusInternalServerError)
 	}
 }
 

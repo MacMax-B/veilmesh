@@ -13,10 +13,10 @@ import (
 	"io"
 	"time"
 
-	"propagare/account"
-	"propagare/identity"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/account"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (

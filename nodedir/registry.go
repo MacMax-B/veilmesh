@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 type Registry struct {

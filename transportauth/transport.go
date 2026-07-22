@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const transportCertificateRenewBefore = 30 * 24 * time.Hour

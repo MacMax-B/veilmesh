@@ -12,3 +12,7 @@ func lockClientStoreFile(*os.File) error {
 }
 
 func unlockClientStoreFile(*os.File) error { return nil }
+
+func syncClientDirectory(string) error {
+	return errors.New("encrypted client-store directory synchronization is unsupported on this platform")
+}

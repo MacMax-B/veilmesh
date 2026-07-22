@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"propagare/nodedir"
+	"github.com/MacMax-B/propagare/nodedir"
 )
 
 type DirectoryBootstrap struct {
@@ -19,17 +19,32 @@ type DirectoryBootstrap struct {
 	MaxNodes         int
 }
 
+// VerifiedDirectory can only be populated by FetchNodeDirectory outside this
+// package. Its records and trust policy are kept private so callers cannot
+// substitute unsigned records between verification and connection.
+type VerifiedDirectory struct {
+	records    []nodedir.Record
+	policy     nodedir.Policy
+	verifiedAt time.Time
+}
+
+// Records returns defensive copies for display and node selection UIs. Mutating
+// them cannot affect the records later consumed by ConnectDirectoryRecords.
+func (directory VerifiedDirectory) Records() []nodedir.Record {
+	return cloneDirectoryRecords(directory.records)
+}
+
 // FetchNodeDirectory reconciles signed snapshots from multiple pinned seeds.
 // The returned records are the union of all successfully verified views; one
 // seed cannot add an unapproved node, although any directory can still omit a
 // node from its own response.
-func FetchNodeDirectory(ctx context.Context, config DirectoryBootstrap, httpClient *http.Client, now time.Time) ([]nodedir.Record, error) {
+func FetchNodeDirectory(ctx context.Context, config DirectoryBootstrap, httpClient *http.Client, now time.Time) (VerifiedDirectory, error) {
 	policy, err := nodedir.NewPolicy(config.Seeds, config.AuthorityQuorum, config.AllowPrivateIPs, config.MaxNodes)
 	if err != nil {
-		return nil, err
+		return VerifiedDirectory{}, err
 	}
 	if config.MinSeedResponses <= 0 || config.MinSeedResponses > len(config.Seeds) {
-		return nil, errors.New("invalid minimum seed response count")
+		return VerifiedDirectory{}, errors.New("invalid minimum seed response count")
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 8 * time.Second}
@@ -38,7 +53,7 @@ func FetchNodeDirectory(ctx context.Context, config DirectoryBootstrap, httpClie
 	safeClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	registry, err := nodedir.NewRegistry(policy)
 	if err != nil {
-		return nil, err
+		return VerifiedDirectory{}, err
 	}
 	type result struct {
 		seed     nodedir.PinnedNode
@@ -71,34 +86,74 @@ func FetchNodeDirectory(ctx context.Context, config DirectoryBootstrap, httpClie
 		successes++
 	}
 	if successes < config.MinSeedResponses {
-		return nil, fmt.Errorf("verified only %d of %d required seed views: %w", successes, config.MinSeedResponses, errors.Join(failures...))
+		return VerifiedDirectory{}, fmt.Errorf("verified only %d of %d required seed views: %w", successes, config.MinSeedResponses, errors.Join(failures...))
 	}
-	return registry.Active(now), nil
+	return VerifiedDirectory{records: cloneDirectoryRecords(registry.Active(now)), policy: policy, verifiedAt: now.UTC()}, nil
 }
 
 // ConnectDirectoryRecords verifies that each contacted endpoint presents the
 // exact hybrid identity admitted by the directory. Limit prevents a directory
-// response from making the client dial an unbounded number of nodes.
-func ConnectDirectoryRecords(ctx context.Context, records []nodedir.Record, limit int, httpClient *http.Client) ([]*HTTPNode, error) {
-	if limit <= 0 || limit > MaxClientNodes || len(records) > nodedir.MaxDirectoryNodes {
+// response from making the client dial an unbounded number of nodes. This
+// production path only permits identity-pinned HTTPS, even when the directory
+// policy admits private IP addresses.
+func ConnectDirectoryRecords(ctx context.Context, directory VerifiedDirectory, limit int, httpClient *http.Client) ([]*HTTPNode, error) {
+	return connectDirectoryRecords(ctx, directory, limit, httpClient, false)
+}
+
+// ConnectDirectoryRecordsForDevelopment explicitly opts into plain HTTP for
+// verified records whose endpoint is a literal loopback or private IP. It must
+// not be used by production clients.
+func ConnectDirectoryRecordsForDevelopment(ctx context.Context, directory VerifiedDirectory, limit int, httpClient *http.Client) ([]*HTTPNode, error) {
+	return connectDirectoryRecords(ctx, directory, limit, httpClient, true)
+}
+
+func connectDirectoryRecords(ctx context.Context, directory VerifiedDirectory, limit int, httpClient *http.Client, allowPrivateDevelopment bool) ([]*HTTPNode, error) {
+	if limit <= 0 || limit > MaxClientNodes || directory.verifiedAt.IsZero() ||
+		len(directory.records) == 0 || len(directory.records) > nodedir.MaxDirectoryNodes {
 		return nil, errors.New("invalid directory connection limit")
 	}
-	if len(records) > limit {
-		records = records[:limit]
+	policy, err := nodedir.NewPolicy(directory.policy.Seeds, directory.policy.AuthorityQuorum, directory.policy.AllowPrivateIPs, directory.policy.MaxNodes)
+	if err != nil {
+		return nil, errors.New("invalid verified directory")
 	}
-	nodes := make([]*HTTPNode, 0, len(records))
+	records := cloneDirectoryRecords(directory.records)
+	now := time.Now().UTC()
 	for _, record := range records {
-		var node *HTTPNode
-		var err error
-		if record.Announcement.Endpoint.Scheme == "http" {
-			node, err = DiscoverHTTPNodeForDevelopment(ctx, record.Announcement.Endpoint.BaseURL(), httpClient)
-		} else {
-			node, err = ConnectPinnedHTTPNode(ctx, record.Announcement.Endpoint.BaseURL(), record.Announcement.Identity, httpClient)
+		if err := nodedir.VerifyRecord(policy, record, now); err != nil {
+			return nil, errors.New("verified directory record is no longer valid")
 		}
-		if err != nil {
+	}
+	nodes := make([]*HTTPNode, 0, min(limit, len(records)))
+	attempted := 0
+	for _, record := range records {
+		if attempted >= limit {
+			break
+		}
+		if ctx != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var node *HTTPNode
+		var connectErr error
+		switch record.Announcement.Endpoint.Scheme {
+		case "https":
+			attempted++
+			node, connectErr = ConnectPinnedHTTPNode(ctx, record.Announcement.Endpoint.BaseURL(), record.Announcement.Identity, httpClient)
+		case "http":
+			if !allowPrivateDevelopment {
+				continue
+			}
+			attempted++
+			node, connectErr = DiscoverHTTPNodeForDevelopment(ctx, record.Announcement.Endpoint.BaseURL(), httpClient)
+		default:
 			continue
 		}
-		if node.Identity.NodeID != record.Announcement.Identity.NodeID {
+		if connectErr != nil {
+			if ctx != nil && ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		if !sameNodeIdentity(node.identity, record.Announcement.Identity) {
 			continue
 		}
 		nodes = append(nodes, node)
@@ -107,4 +162,22 @@ func ConnectDirectoryRecords(ctx context.Context, records []nodedir.Record, limi
 		return nil, errors.New("no admitted directory node was reachable")
 	}
 	return nodes, nil
+}
+
+func cloneDirectoryRecords(records []nodedir.Record) []nodedir.Record {
+	result := make([]nodedir.Record, len(records))
+	for index, record := range records {
+		record.Announcement.Identity = cloneNodeIdentity(record.Announcement.Identity)
+		record.Announcement.Signature.Ed25519 = append([]byte(nil), record.Announcement.Signature.Ed25519...)
+		record.Announcement.Signature.MLDSA65 = append([]byte(nil), record.Announcement.Signature.MLDSA65...)
+		record.Attestations = append([]nodedir.Attestation(nil), record.Attestations...)
+		for attestationIndex := range record.Attestations {
+			attestation := &record.Attestations[attestationIndex]
+			attestation.AnnouncementHash = append([]byte(nil), attestation.AnnouncementHash...)
+			attestation.Signature.Ed25519 = append([]byte(nil), attestation.Signature.Ed25519...)
+			attestation.Signature.MLDSA65 = append([]byte(nil), attestation.Signature.MLDSA65...)
+		}
+		result[index] = record
+	}
+	return result
 }

@@ -6,7 +6,12 @@ import (
 	"errors"
 )
 
-var messageBuckets = []int{1024, 4096, 16384, 65536, 262144}
+const MaxPaddedMessageBytes = 224 * 1024
+
+// The largest bucket leaves enough room below the protocol's 320 KiB item
+// limit for the hybrid KEM encapsulation, AEAD tag, JSON field names, and the
+// base64 expansion of both byte strings in protocol.DirectCiphertext.
+var messageBuckets = []int{1024, 4096, 16384, 65536, MaxPaddedMessageBytes}
 
 func PadMessage(plaintext []byte) ([]byte, error) {
 	required := len(plaintext) + 4
@@ -21,7 +26,7 @@ func PadMessage(plaintext []byte) ([]byte, error) {
 		return nil, errors.New("message too large; use encrypted file chunks")
 	}
 	result := make([]byte, bucket)
-	binary.BigEndian.PutUint32(result[:4], uint32(len(plaintext))) // #nosec G115 -- bucket selection bounds plaintext below 262 KiB.
+	binary.BigEndian.PutUint32(result[:4], uint32(len(plaintext))) // #nosec G115 -- bucket selection bounds plaintext below 224 KiB.
 	copy(result[4:], plaintext)
 	if _, err := rand.Read(result[required:]); err != nil {
 		return nil, err
@@ -30,7 +35,14 @@ func PadMessage(plaintext []byte) ([]byte, error) {
 }
 
 func UnpadMessage(padded []byte) ([]byte, error) {
-	if len(padded) < 4 {
+	validBucket := false
+	for _, bucket := range messageBuckets {
+		if len(padded) == bucket {
+			validBucket = true
+			break
+		}
+	}
+	if !validBucket {
 		return nil, errors.New("invalid padded message")
 	}
 	length := int(binary.BigEndian.Uint32(padded[:4]))

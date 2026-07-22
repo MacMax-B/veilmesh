@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 func testSigner(t *testing.T) *pqcrypto.HybridSigner {

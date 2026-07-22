@@ -17,8 +17,8 @@ import (
 	"strconv"
 	"time"
 
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (
@@ -452,4 +452,11 @@ func cloneRecord(value Record) Record {
 		value.Attestations[index] = cloneAttestation(value.Attestations[index])
 	}
 	return value
+}
+
+// CloneRecord returns an ownership-independent copy of a verified directory
+// record. Consumers which retain routes must not alias snapshot buffers that a
+// caller can later mutate.
+func CloneRecord(value Record) Record {
+	return cloneRecord(value)
 }

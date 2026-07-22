@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 func TestPinnedPKIFreeHybridTransport(t *testing.T) {

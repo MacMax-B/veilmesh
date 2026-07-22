@@ -1,15 +1,18 @@
 package group
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"io"
+	"sync"
 	"time"
 
-	"propagare/identity"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type Role string
@@ -53,6 +56,7 @@ type Action struct {
 }
 
 type State struct {
+	guard        *sync.Mutex
 	GroupID      string                      `json:"group_id"`
 	Creator      protocol.NodePublicIdentity `json:"creator"`
 	GenesisNonce []byte                      `json:"genesis_nonce"`
@@ -62,7 +66,37 @@ type State struct {
 	Hash         []byte                      `json:"hash"`
 }
 
-const MaxGroupMembers = 1000
+const (
+	MaxGroupMembers    = 1000
+	MaxGroupStateBytes = 8 * 1024 * 1024
+)
+
+// UnmarshalJSON restores the non-serialized concurrency guard and validates
+// the complete self-certifying state before committing it to the receiver.
+// Unknown fields and trailing JSON values are rejected.
+func (s *State) UnmarshalJSON(data []byte) error {
+	if s == nil || len(data) == 0 || len(data) > MaxGroupStateBytes {
+		return errors.New("group state encoding is out of range")
+	}
+	type stateWire State
+	var decoded stateWire
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("group state must contain one JSON value")
+	}
+	candidate := State(decoded)
+	candidate.guard = &sync.Mutex{}
+	if !validState(&candidate) {
+		return errors.New("invalid restored group state")
+	}
+	*s = candidate
+	return nil
+}
 
 func New(owner protocol.NodePublicIdentity, policy Policy) (*State, error) {
 	if !pqcrypto.ValidPublicIdentity(owner) {
@@ -73,6 +107,7 @@ func New(owner protocol.NodePublicIdentity, policy Policy) (*State, error) {
 		return nil, err
 	}
 	state := &State{
+		guard:        &sync.Mutex{},
 		GroupID:      identity.GroupID(owner, random, policyCommitment(policy)),
 		Creator:      owner,
 		GenesisNonce: random,
@@ -104,6 +139,11 @@ func SignAction(signer *pqcrypto.HybridSigner, action Action) (Action, error) {
 }
 
 func (s *State) Apply(action Action) error {
+	if s == nil || s.guard == nil {
+		return errors.New("invalid current group state")
+	}
+	s.guard.Lock()
+	defer s.guard.Unlock()
 	if !validState(s) {
 		return errors.New("invalid current group state")
 	}
@@ -199,13 +239,19 @@ func (s *State) Apply(action Action) error {
 	}
 	next.Epoch = action.Epoch
 	next.Hash = stateHash(&next)
-	*s = next
+	// The guard is immutable after construction. Replacing the whole State
+	// would write the guard pointer while another Apply call reads it before
+	// acquiring the mutex, which is itself a data race. Only the fields changed
+	// by this authorized transition are committed under the lock.
+	s.Epoch = next.Epoch
+	s.Members = next.Members
+	s.Hash = next.Hash
 	return nil
 }
 
 func validState(state *State) bool {
-	if state == nil || len(state.Members) == 0 || len(state.Members) > MaxGroupMembers ||
-		len(state.Hash) != sha256.Size || !bytesEqual(state.Hash, stateHash(state)) {
+	if state == nil || state.guard == nil || len(state.Members) == 0 || len(state.Members) > MaxGroupMembers ||
+		len(state.Hash) != sha256.Size {
 		return false
 	}
 	if !identity.ValidGroupID(state.GroupID) || !pqcrypto.ValidPublicIdentity(state.Creator) ||
@@ -234,7 +280,7 @@ func validState(state *State) bool {
 			return false
 		}
 	}
-	return owners == 1
+	return owners == 1 && bytesEqual(state.Hash, stateHash(state))
 }
 
 func policyCommitment(policy Policy) []byte {

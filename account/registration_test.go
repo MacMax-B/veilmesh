@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"propagare/identity"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 type memoryVault struct {
@@ -147,6 +147,79 @@ func TestProfileRejectsTamperingRollbackAndParserAbuse(t *testing.T) {
 	}
 	if _, err := DecodePublicProfile(make([]byte, MaxPublicProfileBytes+1), time.Now()); err == nil {
 		t.Fatal("oversized profile was accepted")
+	}
+}
+
+func TestMaximumPublicProfileRoundTripsWithinWireLimit(t *testing.T) {
+	fixture := newSyncFixture(t, MaxDevicesPerAccount)
+	encoded, err := json.Marshal(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) > MaxPublicProfileBytes {
+		t.Fatalf("maximum profile exceeds wire limit: %d > %d", len(encoded), MaxPublicProfileBytes)
+	}
+	decoded, err := DecodePublicProfile(encoded, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("maximum profile did not round-trip: %v", err)
+	}
+	if len(decoded.Devices) != MaxDevicesPerAccount {
+		t.Fatal("maximum profile lost devices")
+	}
+
+	extraSigner, err := pqcrypto.GenerateHybridSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	extraKEM, err := pqcrypto.GenerateHybridKEMKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	extraPublic := extraSigner.PublicIdentity()
+	extraCertificate, err := SignDevice(fixture.root, protocol.DeviceDescriptor{
+		DeviceID:      identity.DeviceID(extraPublic),
+		AccountID:     fixture.profile.AccountID,
+		HPKEPublicKey: extraKEM.PublicKey,
+		SigningKey:    extraPublic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tooMany := append(append([]DeviceCertificate(nil), fixture.certificates...), extraCertificate)
+	if _, err := SignPublicProfile(fixture.root, 2, time.Now().UTC(), tooMany); err == nil {
+		t.Fatal("profile above the transportable device limit was signed")
+	}
+}
+
+func TestPublicProfileRejectsDuplicateDeviceHPKEKeys(t *testing.T) {
+	root, err := pqcrypto.GenerateHybridSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedKEM, err := pqcrypto.GenerateHybridKEMKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID := AccountID(root.PublicIdentity())
+	certificates := make([]DeviceCertificate, 2)
+	for index := range certificates {
+		deviceSigner, generateErr := pqcrypto.GenerateHybridSigner()
+		if generateErr != nil {
+			t.Fatal(generateErr)
+		}
+		public := deviceSigner.PublicIdentity()
+		certificates[index], err = SignDevice(root, protocol.DeviceDescriptor{
+			DeviceID:      identity.DeviceID(public),
+			AccountID:     accountID,
+			HPKEPublicKey: append([]byte(nil), sharedKEM.PublicKey...),
+			SigningKey:    public,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := SignPublicProfile(root, 1, time.Now().UTC(), certificates); err == nil {
+		t.Fatal("profile with duplicate device HPKE keys was accepted")
 	}
 }
 

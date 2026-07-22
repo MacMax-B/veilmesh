@@ -1,0 +1,72 @@
+name: Release security preview
+
+on:
+  push:
+    tags:
+      - "v*-preview.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify and publish prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Validate preview tag
+        shell: bash
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          test "$GITHUB_REF_NAME" = "v$version"
+          test -f "docs/RELEASE-NOTES-$GITHUB_REF_NAME.md"
+
+      - name: Verify modules and source
+        shell: bash
+        run: |
+          go mod download
+          go mod verify
+          mapfile -d '' files < <(git ls-files -z '*.go')
+          test -z "$(gofmt -l "${files[@]}")"
+          go mod tidy -diff
+          git diff --check
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+          go test -race -count=1 ./...
+
+      - name: Check known reachable vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Build release artifacts
+        run: ./scripts/build-preview-release.sh
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/$GITHUB_REF_NAME"/* \
+            --prerelease \
+            --verify-tag \
+            --title "Propagare $GITHUB_REF_NAME (Security Preview)" \
+            --notes-file "docs/RELEASE-NOTES-$GITHUB_REF_NAME.md"

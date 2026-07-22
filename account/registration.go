@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"propagare/identity"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/identity"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (

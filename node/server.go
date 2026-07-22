@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"propagare/nodedir"
-	"propagare/pqcrypto"
-	"propagare/protocol"
+	"github.com/MacMax-B/propagare/nodedir"
+	"github.com/MacMax-B/propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/protocol"
 )
 
 const (
@@ -45,6 +45,9 @@ func NewServer(config Config, store *DiskStore, signer *pqcrypto.HybridSigner) (
 	}
 	if store == nil || signer == nil {
 		return nil, errors.New("node store and signer are required")
+	}
+	if err := store.BindIdentity(signer); err != nil {
+		return nil, err
 	}
 	s := &Server{
 		config:      config,
@@ -260,6 +263,8 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrMailboxQuota) || errors.Is(err, ErrStorageFull) {
 			status = http.StatusInsufficientStorage
+		} else if errors.Is(err, ErrItemDeleted) {
+			status = http.StatusConflict
 		}
 		writeError(w, status, err)
 		return
@@ -324,7 +329,11 @@ func (s *Server) handleProof(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := s.store.Get(request.ItemID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
 		return
 	}
 	if request.Offset > int64(len(item.Payload))-int64(request.Length) {
@@ -360,24 +369,21 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid delete request"))
 		return
 	}
-	item, err := s.store.Get(request.ItemID)
+	deletedAt := time.Now().UTC().Truncate(time.Millisecond)
+	committed, err := s.store.deleteWithCapability(request.ItemID, request.DeleteToken, deletedAt)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err)
-		return
-	}
-	if !pqcrypto.DeleteTokenMatches(item.DeleteTokenHash, request.DeleteToken) {
-		// Make a wrong capability indistinguishable from an unknown item.
-		writeError(w, http.StatusNotFound, ErrNotFound)
-		return
-	}
-	if err := s.store.Delete(item.ItemID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrNotFound) {
+			// Make a wrong capability indistinguishable from an unknown item.
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
 		return
 	}
 	receipt := protocol.DeleteReceipt{
 		NodeID:    s.identity.NodeID,
-		ItemID:    item.ItemID,
-		DeletedAt: time.Now().UTC().Truncate(time.Millisecond),
+		ItemID:    committed.ItemID,
+		DeletedAt: committed.DeletedAt,
 	}
 	receipt.Signature, err = s.signer.Sign(deleteReceiptDomain, protocol.DeleteReceiptSigningBytes(receipt))
 	if err != nil {

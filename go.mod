@@ -1,8 +1,6 @@
-module propagare
+module github.com/MacMax-B/propagare
 
-go 1.26
-
-toolchain go1.26.5
+go 1.26.5
 
 require (
 	github.com/cloudflare/circl v1.6.3

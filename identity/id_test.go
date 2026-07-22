@@ -1,10 +1,11 @@
 package identity
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
-	"propagare/pqcrypto"
+	"github.com/MacMax-B/propagare/pqcrypto"
 )
 
 func TestENIGIdentifiersAreTypedAndSelfCertifying(t *testing.T) {
@@ -36,6 +37,45 @@ func TestENIGIdentifiersAreTypedAndSelfCertifying(t *testing.T) {
 	}
 	if ValidAccountID(strings.ToLower(accountID)) || ValidAccountID(accountID+"A") || ValidGroupID(accountID) {
 		t.Fatal("malformed or cross-type ENIG identifier was accepted")
+	}
+}
+
+func TestENIGIdentifiersRejectNonCanonicalBase32RestBits(t *testing.T) {
+	signer, err := pqcrypto.GenerateHybridSigner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, GenesisNonceBytes)
+	ids := []struct {
+		name   string
+		prefix string
+		id     string
+		valid  func(string) bool
+	}{
+		{name: "account", prefix: AccountPrefix, id: AccountID(signer.PublicIdentity()), valid: ValidAccountID},
+		{name: "device", prefix: DevicePrefix, id: DeviceID(signer.PublicIdentity()), valid: ValidDeviceID},
+		{name: "group", prefix: GroupPrefix, id: GroupID(signer.PublicIdentity(), nonce, []byte{0}), valid: ValidGroupID},
+	}
+	for _, test := range ids {
+		t.Run(test.name, func(t *testing.T) {
+			canonicalSuffix := test.id[len(test.prefix):]
+			last := canonicalSuffix[len(canonicalSuffix)-1]
+			replacement := byte('B')
+			if last == 'Q' {
+				replacement = 'R'
+			} else if last != 'A' {
+				t.Fatalf("unexpected canonical final base32 symbol %q", last)
+			}
+			alias := test.id[:len(test.id)-1] + string(replacement)
+			canonicalDigest, canonicalErr := encoding.DecodeString(canonicalSuffix)
+			aliasDigest, aliasErr := encoding.DecodeString(alias[len(test.prefix):])
+			if canonicalErr != nil || aliasErr != nil || !bytes.Equal(canonicalDigest, aliasDigest) {
+				t.Fatal("test alias did not preserve the decoded digest")
+			}
+			if test.valid(alias) {
+				t.Fatal("non-canonical base32 rest bits were accepted")
+			}
+		})
 	}
 }
 
